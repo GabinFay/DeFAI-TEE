@@ -31,43 +31,81 @@ The following addresses are used for Uniswap V3 on Flare:
 
 This script demonstrates how to swap tokens on Flare using Uniswap V3.
 
+```bash
+python flare_uniswap_sdk_swap.py
+```
+
 ### flare_uniswap_add_liquidity.py
 
 This script demonstrates how to add liquidity to a Uniswap V3 pool on Flare.
 
-## Recent Fixes
-
-The following issues were fixed to make the SDK work correctly with Flare:
-
-1. Updated the constants.py file to include all the correct Flare network addresses
-2. Modified the uniswap.py file to use the correct position manager address from the _nonfungible_position_manager_addresses dictionary
-3. Added better error handling and debugging information to the add_liquidity script
-4. Used a narrower tick range for position creation
-5. Properly estimated gas for transactions
-
-## Usage
-
-1. Install the required dependencies:
-```
-pip install web3 uniswap-python
+```bash
+python flare_uniswap_add_liquidity.py
 ```
 
-2. Set up your environment variables in a .env file:
+### flare_uniswap_remove_liquidity.py
+
+This script demonstrates how to remove liquidity from a Uniswap V3 position on Flare.
+
+```bash
+python flare_uniswap_remove_liquidity.py <position_id> --percent <percentage>
+```
+
+### flare_uniswap_sdk_test.py
+
+This script provides a comprehensive test suite for Uniswap V3 on Flare.
+
+```bash
+# Run all tests
+python flare_uniswap_sdk_test.py --all
+
+# Test specific functionality
+python flare_uniswap_sdk_test.py --swap
+python flare_uniswap_sdk_test.py --pool
+python flare_uniswap_sdk_test.py --positions
+python flare_uniswap_sdk_test.py --provide
+python flare_uniswap_sdk_test.py --remove <position_id> --percent <percentage>
+```
+
+## SDK Modifications
+
+The following modifications were made to the uniswap-python SDK to support Flare network:
+
+1. **constants.py**: Added all Flare network contract addresses and constants
+   - Added WFLR_ADDRESS
+   - Added _wrapped_native_token dictionary
+   - Added all contract addresses for Flare network
+   - Added init code hashes for Flare network
+
+2. **uniswap.py**: Modified to use Flare network addresses
+   - Updated initialization to use network-specific addresses
+   - Added robust error handling for token operations
+   - Updated get_weth_address to return WFLR on Flare network
+   - Added logging for contract addresses
+
+3. **Position Data Structure**: Adapted to Flare's position data structure
+   - Flare's position data structure: [nonce, operator, token0, token1, fee, tickLower, tickUpper, liquidity, ...]
+   - Updated position handling in test_get_positions and remove_liquidity
+
+## Usage Notes
+
+- When adding liquidity, ensure that token0 address is less than token1 address (required by Uniswap V3)
+- The Flare network has chain ID 14
+- WFLR address on Flare: 0x1D80c49BbBCd1C0911346656B529DF9E5c2F783d
+- USDC.e address on Flare: 0xFbDa5F676cB37624f28265A144A48B0d6e87d3b6
+
+## Environment Setup
+
+Create a .env file with the following variables:
+
 ```
 FLARE_RPC_URL=https://flare-api.flare.network/ext/C/rpc
 WALLET_ADDRESS=your_wallet_address
 PRIVATE_KEY=your_private_key
 ```
 
-3. Run the scripts:
-```
-python flare_uniswap_sdk_swap.py
-python flare_uniswap_add_liquidity.py
-```
+## Dependencies
 
-## Notes
-
-- When adding liquidity, ensure that token0 address is less than token1 address (required by Uniswap V3)
-- The Flare network has chain ID 14
-- WFLR address on Flare: 0x1D80c49BbBCd1C0911346656B529DF9E5c2F783d
-- USDC.e address on Flare: 0xFbDa5F676cB37624f28265A144A48B0d6e87d3b6 
+```
+pip install web3 uniswap-python python-dotenv eth-account
+``` 
