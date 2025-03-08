@@ -13,6 +13,7 @@ SIMPLE_CACHE_RPC_WHITELIST = cast(
 
 ETH_ADDRESS = "0x0000000000000000000000000000000000000000"
 WETH9_ADDRESS = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+WFLR_ADDRESS = "0x1D80c49BbBCd1C0911346656B529DF9E5c2F783d"  # WFLR address on Flare
 
 # see: https://chainid.network/chains/
 _netid_to_name = {
@@ -33,6 +34,16 @@ _netid_to_name = {
     1666700000: "harmony_testnet",
     11155111: "sepolia",
     14: "flare",  # Adding Flare network with chain ID 14
+}
+
+# Native wrapped token addresses by network
+_wrapped_native_token = {
+    "mainnet": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",  # WETH
+    "görli": "0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6",    # WETH
+    "arbitrum": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1", # WETH
+    "optimism": "0x4200000000000000000000000000000000000006",  # WETH
+    "polygon": "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",   # WMATIC
+    "flare": "0x1D80c49BbBCd1C0911346656B529DF9E5c2F783d",    # WFLR
 }
 
 _factory_contract_addresses_v1 = {
@@ -95,7 +106,7 @@ _tick_bitmap_range = {
     10_000: (-18, 17),
 }
 
-# Adding Flare V3 Factory address
+# V3 Factory addresses
 _factory_contract_addresses_v3 = {
     "mainnet": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
     "görli": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
@@ -105,7 +116,7 @@ _factory_contract_addresses_v3 = {
     "flare": "0x8A2578d23d4C532cC9A98FaD91C0523f5efDE652",
 }
 
-# Adding Flare V3 Router address
+# V3 Router addresses
 _router_contract_addresses_v3 = {
     "mainnet": "0xE592427A0AEce92De3Edee1F18E0157C05861564",
     "görli": "0xE592427A0AEce92De3Edee1F18E0157C05861564",
@@ -115,7 +126,7 @@ _router_contract_addresses_v3 = {
     "flare": "0x8a1E35F5c98C4E85B36B7B253222eE17773b2781",
 }
 
-# Adding Flare NonfungiblePositionManager address
+# NonfungiblePositionManager addresses
 _nonfungible_position_manager_addresses = {
     "mainnet": "0xC36442b4a4522E871399CD717aBDD847Ab11FE88",
     "görli": "0xC36442b4a4522E871399CD717aBDD847Ab11FE88",
@@ -125,7 +136,7 @@ _nonfungible_position_manager_addresses = {
     "flare": "0xEE5FF5Bc5F852764b5584d92A4d592A53DC527da",
 }
 
-# Adding Flare Quoter address
+# Quoter addresses
 _quoter_contract_addresses = {
     "mainnet": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6",
     "görli": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6",
@@ -135,7 +146,107 @@ _quoter_contract_addresses = {
     "flare": "0x5B5513c55fd06e2658010c121c37b07fC8e8B705",
 }
 
-# Adding Flare V3 Pool InitCodeHash
+# QuoterV2 addresses
+_quoterv2_contract_addresses = {
+    "mainnet": "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
+    "görli": "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
+    "arbitrum": "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
+    "optimism": "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
+    "polygon": "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
+    "flare": "0x2DcABbB3a5Fe9DBb1F43edf48449aA7254Ef3a80",
+}
+
+# V3 Migrator addresses
+_v3_migrator_addresses = {
+    "mainnet": "0xA5644E29708357803b5A882D272c41cC0dF92B34",
+    "görli": "0xA5644E29708357803b5A882D272c41cC0dF92B34",
+    "arbitrum": "0xA5644E29708357803b5A882D272c41cC0dF92B34",
+    "optimism": "0xA5644E29708357803b5A882D272c41cC0dF92B34",
+    "polygon": "0xA5644E29708357803b5A882D272c41cC0dF92B34",
+    "flare": "0xf2f986C04387570A7C7819fac51bd553bb0814af",
+}
+
+# Universal Router addresses
+_universal_router_addresses = {
+    "mainnet": "0xEf1c6E67703c7BD7107eed8303Fbe6EC2554BF6B",
+    "görli": "0xEf1c6E67703c7BD7107eed8303Fbe6EC2554BF6B",
+    "arbitrum": "0xEf1c6E67703c7BD7107eed8303Fbe6EC2554BF6B",
+    "optimism": "0xEf1c6E67703c7BD7107eed8303Fbe6EC2554BF6B",
+    "polygon": "0xEf1c6E67703c7BD7107eed8303Fbe6EC2554BF6B",
+    "flare": "0x0f3D8a38D4c74afBebc2c42695642f0e3acb15D3",
+}
+
+# Token Distributor addresses
+_token_distributor_addresses = {
+    "mainnet": "0x090D4613473dEE047c3f2706764f49E0821D256e",
+    "görli": "0x090D4613473dEE047c3f2706764f49E0821D256e",
+    "arbitrum": "0x090D4613473dEE047c3f2706764f49E0821D256e",
+    "optimism": "0x090D4613473dEE047c3f2706764f49E0821D256e",
+    "polygon": "0x090D4613473dEE047c3f2706764f49E0821D256e",
+    "flare": "0x30FAA249e1ec3e75e203feBD35eb010b8E7BD22B",
+}
+
+# Permit2 addresses
+_permit2_addresses = {
+    "mainnet": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    "görli": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    "arbitrum": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    "optimism": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    "polygon": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    "flare": "0xB952578f3520EE8Ea45b7914994dcf4702cEe578",
+}
+
+# NFT Descriptor addresses
+_nft_descriptor_addresses = {
+    "mainnet": "0x42B24A95702b9986e82d421cC3568932790A48Ec",
+    "görli": "0x42B24A95702b9986e82d421cC3568932790A48Ec",
+    "arbitrum": "0x42B24A95702b9986e82d421cC3568932790A48Ec",
+    "optimism": "0x42B24A95702b9986e82d421cC3568932790A48Ec",
+    "polygon": "0x42B24A95702b9986e82d421cC3568932790A48Ec",
+    "flare": "0x98904715dDd961fb368eF7ea3A419ff1FB664c38",
+}
+
+# Tick Lens addresses
+_tick_lens_addresses = {
+    "mainnet": "0xbfd8137f7d1516D3ea5cA83523914859ec47F573",
+    "görli": "0xbfd8137f7d1516D3ea5cA83523914859ec47F573",
+    "arbitrum": "0xbfd8137f7d1516D3ea5cA83523914859ec47F573",
+    "optimism": "0xbfd8137f7d1516D3ea5cA83523914859ec47F573",
+    "polygon": "0xbfd8137f7d1516D3ea5cA83523914859ec47F573",
+    "flare": "0xdB5F2Ca65aAeB277E36be69553E0e7aA3585204d",
+}
+
+# NonfungibleTokenPositionDescriptor addresses
+_nonfungible_token_position_descriptor_addresses = {
+    "mainnet": "0x91ae842A5Ffd8d12023116943e72A606179294f3",
+    "görli": "0x91ae842A5Ffd8d12023116943e72A606179294f3",
+    "arbitrum": "0x91ae842A5Ffd8d12023116943e72A606179294f3",
+    "optimism": "0x91ae842A5Ffd8d12023116943e72A606179294f3",
+    "polygon": "0x91ae842A5Ffd8d12023116943e72A606179294f3",
+    "flare": "0x840777EF3ED0457729354754946D96c07116651e",
+}
+
+# Old NFT Manager addresses
+_old_nft_manager_addresses = {
+    "mainnet": "0x8817d887960737A604Cf712d3E5da8673DDdb7F0",
+    "görli": "0x8817d887960737A604Cf712d3E5da8673DDdb7F0",
+    "arbitrum": "0x8817d887960737A604Cf712d3E5da8673DDdb7F0",
+    "optimism": "0x8817d887960737A604Cf712d3E5da8673DDdb7F0",
+    "polygon": "0x8817d887960737A604Cf712d3E5da8673DDdb7F0",
+    "flare": "0x9BD490113a249c81D0beA52d677134f5e87C0d60",
+}
+
+# Multicall addresses
+_multicall_addresses = {
+    "mainnet": "0x5BA1e12693Dc8F9c48aAD8770482f4739bEeD696",
+    "görli": "0x5BA1e12693Dc8F9c48aAD8770482f4739bEeD696",
+    "arbitrum": "0x50075F151ABC5B6B448b1272A0a1cFb5CFA25828",
+    "optimism": "0x5BA1e12693Dc8F9c48aAD8770482f4739bEeD696",
+    "polygon": "0x5BA1e12693Dc8F9c48aAD8770482f4739bEeD696",
+    "flare": "0x5BA1e12693Dc8F9c48aAD8770482f4739bEeD696",  # Using default multicall address for Flare
+}
+
+# V3 Pool InitCodeHash
 _v3_pool_init_code_hash = {
     "mainnet": "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54",
     "görli": "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54",
@@ -145,7 +256,7 @@ _v3_pool_init_code_hash = {
     "flare": "0x209015062f691a965df159762a8d966b688e328361c53ec32da2ad31287e3b72",
 }
 
-# Adding Flare V2 Pair InitCodeHash
+# V2 Pair InitCodeHash
 _v2_pair_init_code_hash = {
     "mainnet": "0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f",
     "görli": "0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f",

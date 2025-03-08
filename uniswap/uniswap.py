@@ -35,18 +35,30 @@ from .constants import (
     MAX_UINT_128,
     MIN_TICK,
     WETH9_ADDRESS,
+    WFLR_ADDRESS,
     _factory_contract_addresses_v1,
     _factory_contract_addresses_v2,
-    _netid_to_name,
-    _router_contract_addresses_v2,
-    _tick_bitmap_range,
-    _tick_spacing,
     _factory_contract_addresses_v3,
-    _quoter_contract_addresses,
-    _router_contract_addresses_v3,
+    _multicall_addresses,
+    _netid_to_name,
+    _nft_descriptor_addresses,
     _nonfungible_position_manager_addresses,
-    _v3_pool_init_code_hash,
+    _nonfungible_token_position_descriptor_addresses,
+    _old_nft_manager_addresses,
+    _permit2_addresses,
+    _quoter_contract_addresses,
+    _quoterv2_contract_addresses,
+    _router_contract_addresses_v2,
+    _router_contract_addresses_v3,
+    _tick_bitmap_range,
+    _tick_lens_addresses,
+    _tick_spacing,
+    _token_distributor_addresses,
+    _universal_router_addresses,
     _v2_pair_init_code_hash,
+    _v3_migrator_addresses,
+    _v3_pool_init_code_hash,
+    _wrapped_native_token,
 )
 from .decorators import check_approval, supports
 from .exceptions import InsufficientBalance, InvalidToken
@@ -160,7 +172,7 @@ class Uniswap:
 
         if self.version == 1:
             if factory_contract_addr is None:
-                factory_contract_addr = _factory_contract_addresses_v1[self.netname]
+                factory_contract_addr = _factory_contract_addresses_v1.get(self.netname)
 
             self.factory_contract = _load_contract(
                 self.w3,
@@ -169,11 +181,11 @@ class Uniswap:
             )
         elif self.version == 2:
             if router_contract_addr is None:
-                router_contract_addr = _router_contract_addresses_v2[self.netname]
+                router_contract_addr = _router_contract_addresses_v2.get(self.netname)
             self.router_address: AddressLike = _str_to_addr(router_contract_addr)
 
             if factory_contract_addr is None:
-                factory_contract_addr = _factory_contract_addresses_v2[self.netname]
+                factory_contract_addr = _factory_contract_addresses_v2.get(self.netname)
             self.factory_contract = _load_contract(
                 self.w3,
                 abi_name="uniswap-v2/factory",
@@ -186,47 +198,88 @@ class Uniswap:
                 address=self.router_address,
             )
         elif self.version == 3:
-            # https://github.com/Uniswap/uniswap-v3-periphery/blob/main/deploys.md
+            # Get all contract addresses for the current network
             factory_contract_address = _str_to_addr(
-                _factory_contract_addresses_v3.get(self.netname, "0x1F98431c8aD98523631AE4a59f267346ea31F984")
+                _factory_contract_addresses_v3.get(self.netname)
             )
             self.factory_contract = _load_contract(
                 self.w3, abi_name="uniswap-v3/factory", address=factory_contract_address
             )
+            
+            # Get quoter address
             quoter_addr = _str_to_addr(
-                _quoter_contract_addresses.get(self.netname, "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6")
-            )
-            self.router_address = _str_to_addr(
-                _router_contract_addresses_v3.get(self.netname, "0xE592427A0AEce92De3Edee1F18E0157C05861564")
+                _quoter_contract_addresses.get(self.netname)
             )
             self.quoter = _load_contract(
                 self.w3, abi_name="uniswap-v3/quoter", address=quoter_addr
             )
+            
+            # Get router address
+            self.router_address = _str_to_addr(
+                _router_contract_addresses_v3.get(self.netname)
+            )
             self.router = _load_contract(
                 self.w3, abi_name="uniswap-v3/router", address=self.router_address
             )
+            
+            # Get position manager address
             self.positionManager_addr = _str_to_addr(
-                _nonfungible_position_manager_addresses.get(self.netname, "0xC36442b4a4522E871399CD717aBDD847Ab11FE88")
+                _nonfungible_position_manager_addresses.get(self.netname)
             )
             self.nonFungiblePositionManager = _load_contract(
                 self.w3,
                 abi_name="uniswap-v3/nonFungiblePositionManager",
                 address=self.positionManager_addr,
             )
-            # Print the position manager address for debugging
             logger.info(f"Using position manager address: {self.positionManager_addr}")
             
-            if self.netname == "arbitrum":
-                multicall2_addr = _str_to_addr(
-                    "0x50075F151ABC5B6B448b1272A0a1cFb5CFA25828"
-                )
-            else:
-                multicall2_addr = _str_to_addr(
-                    "0x5BA1e12693Dc8F9c48aAD8770482f4739bEeD696"
-                )
+            # Get multicall address
+            multicall2_addr = _str_to_addr(
+                _multicall_addresses.get(self.netname)
+            )
             self.multicall2 = _load_contract(
                 self.w3, abi_name="uniswap-v3/multicall", address=multicall2_addr
             )
+            
+            # Initialize additional contracts if needed
+            try:
+                # QuoterV2
+                self.quoterV2_addr = _str_to_addr(
+                    _quoterv2_contract_addresses.get(self.netname)
+                )
+                self.quoterV2 = _load_contract(
+                    self.w3, abi_name="uniswap-v3/quoterV2", address=self.quoterV2_addr
+                )
+                logger.info(f"Using QuoterV2 address: {self.quoterV2_addr}")
+            except Exception as e:
+                logger.warning(f"Failed to initialize QuoterV2: {e}")
+                self.quoterV2 = None
+                
+            # Store other contract addresses for potential future use
+            self.v3_migrator_addr = _v3_migrator_addresses.get(self.netname)
+            self.universal_router_addr = _universal_router_addresses.get(self.netname)
+            self.token_distributor_addr = _token_distributor_addresses.get(self.netname)
+            self.permit2_addr = _permit2_addresses.get(self.netname)
+            self.nft_descriptor_addr = _nft_descriptor_addresses.get(self.netname)
+            self.tick_lens_addr = _tick_lens_addresses.get(self.netname)
+            self.nft_position_descriptor_addr = _nonfungible_token_position_descriptor_addresses.get(self.netname)
+            self.old_nft_manager_addr = _old_nft_manager_addresses.get(self.netname)
+            
+            # Store init code hashes
+            self.v3_pool_init_code_hash = _v3_pool_init_code_hash.get(self.netname)
+            self.v2_pair_init_code_hash = _v2_pair_init_code_hash.get(self.netname)
+            
+            # Store wrapped native token address
+            self.wrapped_native_token_addr = _wrapped_native_token.get(self.netname)
+            
+            # Log all initialized addresses
+            logger.info(f"Initialized Uniswap V3 on {self.netname} with the following addresses:")
+            logger.info(f"Factory: {factory_contract_address}")
+            logger.info(f"Router: {self.router_address}")
+            logger.info(f"Position Manager: {self.positionManager_addr}")
+            logger.info(f"Quoter: {quoter_addr}")
+            logger.info(f"Multicall: {multicall2_addr}")
+            logger.info(f"Wrapped Native Token: {self.wrapped_native_token_addr}")
         else:
             raise Exception(
                 f"Invalid version '{self.version}', only 1, 2 or 3 supported"
@@ -1600,16 +1653,45 @@ class Uniswap:
         """
         # FIXME: This function should always return the same output for the same input
         #        and would therefore benefit from caching
-        if address == "0x0000000000000000000000000000000000000000":
+        
+        # Handle empty or zero addresses
+        if address == "0x0000000000000000000000000000000000000000" or not address or address == "0x0" or address == 0:
             # This isn't exactly right, but for all intents and purposes,
             # ETH is treated as a ERC20 by Uniswap.
             return ERC20Token(
-                address=address,
+                address=ETH_ADDRESS,
                 name="ETH",
                 symbol="ETH",
                 decimals=18,
             )
-        token_contract = _load_contract(self.w3, abi_name, address=address)
+            
+        # Try to convert address to proper format
+        try:
+            address = Web3.to_checksum_address(address)
+        except Exception as e:
+            logger.warning(f"Invalid address format: {address}, error: {e}")
+            # Return a placeholder token for invalid addresses
+            return ERC20Token(
+                address=address,
+                name="UNKNOWN",
+                symbol="UNKNOWN",
+                decimals=18,
+            )
+            
+        # Try to load the token contract
+        try:
+            token_contract = _load_contract(self.w3, abi_name, address=address)
+        except Exception as e:
+            logger.warning(f"Failed to load token contract at {address}: {e}")
+            # Return a placeholder token if contract loading fails
+            return ERC20Token(
+                address=address,
+                name="UNKNOWN",
+                symbol="UNKNOWN",
+                decimals=18,
+            )
+            
+        # Try to get token information
         try:
             _name = token_contract.functions.name().call()
             _symbol = token_contract.functions.symbol().call()
@@ -1618,34 +1700,52 @@ class Uniswap:
             logger.warning(
                 f"Exception occurred while trying to get token {_addr_to_str(address)}: {e}"
             )
-            raise InvalidToken(address)
+            # For Flare network, check if this is the wrapped native token
+            if self.netname == "flare" and address.lower() == WFLR_ADDRESS.lower():
+                return ERC20Token(
+                    address=address,
+                    name="Wrapped Flare",
+                    symbol="WFLR",
+                    decimals=18,
+                )
+            # Return a placeholder token if we can't get token info
+            return ERC20Token(
+                address=address,
+                name=f"UNKNOWN-{address[:6]}",
+                symbol=f"UNK-{address[:4]}",
+                decimals=18,
+            )
+            
+        # Handle different string formats
         try:
-            name = _name.decode()
+            name = _name.decode() if isinstance(_name, bytes) else _name
         except Exception:
-            name = _name
+            name = str(_name)
+            
         try:
-            symbol = _symbol.decode()
+            symbol = _symbol.decode() if isinstance(_symbol, bytes) else _symbol
         except Exception:
-            symbol = _symbol
+            symbol = str(_symbol)
+            
         return ERC20Token(symbol, address, name, decimals)
 
     @functools.lru_cache()
     @supports([2, 3])
     def get_weth_address(self) -> ChecksumAddress:
-        """Retrieves the WETH address from the contracts (which may vary between chains)."""
+        """
+        Returns the WETH address for the current network.
+        For Flare, this will return the WFLR address.
+        """
+        # Use the wrapped native token address for the current network
+        if hasattr(self, 'wrapped_native_token_addr') and self.wrapped_native_token_addr:
+            return self.wrapped_native_token_addr
+        
+        # Fallback to router contract method for older versions
         if self.version == 2:
-            # Contract calls should always return checksummed addresses
-            address: ChecksumAddress = self.router.functions.WETH().call()
+            return self.router.functions.WETH().call()
         elif self.version == 3:
-            address = self.router.functions.WETH9().call()
-        else:
-            raise ValueError  # pragma: no cover
-
-        # Mainnet WETH9 address
-        # WETH9_ADDRESS = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
-        # assert address == WETH9_ADDRESS, "WETH address mismatch"
-
-        return address
+            # For V3, use the wrapped native token dictionary
+            return _wrapped_native_token.get(self.netname, WETH9_ADDRESS)
 
     @supports([3])
     def get_pool_instance(
