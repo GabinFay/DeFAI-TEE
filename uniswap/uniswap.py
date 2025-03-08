@@ -44,6 +44,9 @@ from .constants import (
     _factory_contract_addresses_v3,
     _quoter_contract_addresses,
     _router_contract_addresses_v3,
+    _nonfungible_position_manager_addresses,
+    _v3_pool_init_code_hash,
+    _v2_pair_init_code_hash,
 )
 from .decorators import check_approval, supports
 from .exceptions import InsufficientBalance, InvalidToken
@@ -203,13 +206,16 @@ class Uniswap:
                 self.w3, abi_name="uniswap-v3/router", address=self.router_address
             )
             self.positionManager_addr = _str_to_addr(
-                "0xC36442b4a4522E871399CD717aBDD847Ab11FE88"
+                _nonfungible_position_manager_addresses.get(self.netname, "0xC36442b4a4522E871399CD717aBDD847Ab11FE88")
             )
             self.nonFungiblePositionManager = _load_contract(
                 self.w3,
                 abi_name="uniswap-v3/nonFungiblePositionManager",
                 address=self.positionManager_addr,
             )
+            # Print the position manager address for debugging
+            logger.info(f"Using position manager address: {self.positionManager_addr}")
+            
             if self.netname == "arbitrum":
                 multicall2_addr = _str_to_addr(
                     "0x50075F151ABC5B6B448b1272A0a1cFb5CFA25828"

@@ -134,3 +134,23 @@ _quoter_contract_addresses = {
     "polygon": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6",
     "flare": "0x5B5513c55fd06e2658010c121c37b07fC8e8B705",
 }
+
+# Adding Flare V3 Pool InitCodeHash
+_v3_pool_init_code_hash = {
+    "mainnet": "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54",
+    "görli": "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54",
+    "arbitrum": "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54",
+    "optimism": "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54",
+    "polygon": "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54",
+    "flare": "0x209015062f691a965df159762a8d966b688e328361c53ec32da2ad31287e3b72",
+}
+
+# Adding Flare V2 Pair InitCodeHash
+_v2_pair_init_code_hash = {
+    "mainnet": "0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f",
+    "görli": "0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f",
+    "arbitrum": "0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f",
+    "optimism": "0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f",
+    "polygon": "0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f",
+    "flare": "0x60cc0e9ad39c5fa4ee52571f511012ed76fbaa9bbaffd2f3fafffcb3c47cff6e",
+}
