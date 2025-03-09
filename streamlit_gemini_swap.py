@@ -828,8 +828,6 @@ def handle_function_call(function_call):
         try:
             # Import the necessary functions
             from flare_uniswap_sdk_test import initialize_uniswap
-            from uniswap.uniswap import Uniswap
-            from flare_router import FlareRouter
             
             # Redirect stdout to capture output
             stdout_redirector = StreamlitStdoutRedirector(st.empty())
@@ -860,9 +858,6 @@ def handle_function_call(function_call):
                 print(f"FLR Balance: {eth_balance_formatted}")
             
             # Get token balances
-            flare_router = FlareRouter(uniswap)
-            token_registry = flare_router.token_registry
-            
             for token in tokens:
                 if token == "FLR":
                     continue  # Already handled above
@@ -871,10 +866,14 @@ def handle_function_call(function_call):
                     # Check if token is a symbol or address
                     if token.startswith("0x"):
                         token_address = token
-                        token_info = token_registry.get_token_by_address(token_address)
-                        if token_info:
-                            token_symbol = token_info["symbol"]
-                        else:
+                        # Try to find token symbol by address
+                        token_symbol = None
+                        for name, addr in {**FLARE_TOKENS, **KINETIC_TOKENS}.items():
+                            if addr.lower() == token_address.lower():
+                                token_symbol = name
+                                break
+                        
+                        if not token_symbol:
                             # Try to get symbol from contract
                             try:
                                 erc20 = uniswap.get_token(token_address)
@@ -883,30 +882,24 @@ def handle_function_call(function_call):
                                 token_symbol = "UNKNOWN"
                     else:
                         token_symbol = token
-                        token_info = token_registry.get_token_by_symbol(token_symbol)
-                        if not token_info:
+                        # Try to find token address by symbol
+                        if token in FLARE_TOKENS:
+                            token_address = FLARE_TOKENS[token]
+                        elif token in KINETIC_TOKENS:
+                            token_address = KINETIC_TOKENS[token]
+                        else:
                             print(f"Token {token_symbol} not found in registry. Skipping.")
                             continue
-                        token_address = token_info["address"]
                     
-                    # Get balance
-                    balance_wei = uniswap.get_token_balance(token_address)
-                    decimals = token_info.get("decimals", 18) if token_info else 18
-                    balance = balance_wei / (10 ** decimals)
+                    # Get token info using get_token_balance function
+                    token_info = get_token_balance(uniswap.w3, token_address, uniswap.address)
                     
                     # Add to balances
-                    balances[token_symbol] = {
-                        "symbol": token_symbol,
-                        "name": token_info.get("name", token_symbol),
-                        "balance": float(balance),
-                        "balance_wei": str(balance_wei),
-                        "address": token_address,
-                        "decimals": decimals
-                    }
+                    balances[token_symbol] = token_info
                     
-                    print(f"{token_symbol} Balance: {balance}")
+                    print(f"{token_symbol} Balance: {token_info['balance']}")
                 except Exception as e:
-                    print(f"Error getting balance for token at {token_address}: {str(e)}")
+                    print(f"Error getting balance for token {token}: {str(e)}")
             
             # Restore stdout
             sys.stdout = sys.__stdout__
@@ -1351,7 +1344,7 @@ def get_native_balance(web3, wallet_address):
 
 def fetch_and_display_balances():
     """
-    Fetch token balances using the direct Web3 approach from flare_token_balance.py
+    Fetch token balances using the direct Web3 approach
     
     Returns:
         dict: Dictionary of token balances indexed by symbol
@@ -1368,10 +1361,14 @@ def fetch_and_display_balances():
             native_balance["symbol"]: native_balance
         }
         
-        # Get token balances
+        # Get token balances for common tokens
         for token_name, token_address in FLARE_TOKENS.items():
-            token_info = get_token_balance(web3, token_address, wallet_address)
-            balances[token_info["symbol"]] = token_info
+            try:
+                token_info = get_token_balance(web3, token_address, wallet_address)
+                balances[token_info["symbol"]] = token_info
+            except Exception as e:
+                print(f"Error fetching balance for {token_name}: {str(e)}")
+                continue
         
         # Update session state
         st.session_state.token_balances = balances
@@ -1387,14 +1384,8 @@ def fetch_and_display_balances():
 def display_balances_sidebar():
     st.sidebar.markdown("## Your Token Balances")
     
-    # Check if we need to update balances (every 5 minutes)
-    if (st.session_state.last_balance_update is None or 
-        (datetime.now() - st.session_state.last_balance_update).total_seconds() > 300):
-        with st.sidebar.status("Fetching balances...", expanded=False) as status:
-            balances = fetch_and_display_balances()
-            status.update(label="Balances updated!", state="complete", expanded=False)
-    else:
-        balances = st.session_state.token_balances
+    # Remove automatic balance fetching
+    balances = st.session_state.token_balances
     
     # Display balances
     if balances:
@@ -1403,7 +1394,7 @@ def display_balances_sidebar():
             if balance > 0:
                 st.sidebar.markdown(f"**{symbol}**: {balance:.6f}")
     else:
-        st.sidebar.info("Connect your wallet to see balances")
+        st.sidebar.info("Click 'Refresh Balances' to see your token balances")
     
     # Add refresh button
     if st.sidebar.button("Refresh Balances"):
@@ -1520,194 +1511,6 @@ with st.sidebar:
     model_name = selected_model.split("/")[-1]
     if model_name in MODEL_DESCRIPTIONS:
         st.caption(MODEL_DESCRIPTIONS[model_name])
-    
-    # Add TEE Attestation section
-    st.subheader("TEE Attestation")
-    
-    # Initialize attestation state if not exists
-    if "attestation_token" not in st.session_state:
-        st.session_state.attestation_token = None
-        st.session_state.attestation_status = None
-        st.session_state.attestation_message = None
-        st.session_state.attestation_claims = None
-        st.session_state.attestation_debug = None
-    
-    # Display simulation status
-    with st.expander("TEE Attestation", expanded=False):
-        is_simulated = os.environ.get("SIMULATE_ATTESTATION", "false").lower() == "true"
-        if is_simulated:
-            st.info("⚠️ Running in simulation mode (SIMULATE_ATTESTATION=true)")
-        else:
-            st.info("🔒 Running in real TEE attestation mode (SIMULATE_ATTESTATION=false)")
-        
-        # Check if we're running in a TEE environment
-        in_tee = is_running_in_tee()
-        
-        if not in_tee and not is_simulated:
-            st.warning("⚠️ Not running in a TEE environment. TEE socket not found.")
-            st.markdown("""
-            To run in a TEE environment:
-            1. Make sure you're running in a Confidential VM with TEE support
-            2. Make sure the container has access to the TEE socket
-            3. Or set SIMULATE_ATTESTATION=true for testing
-            """)
-        
-        # Add Generate Attestation button
-        if st.button("Generate Attestation"):
-            with st.spinner("Generating and verifying TEE attestation..."):
-                success, message, token, claims = generate_and_verify_attestation()
-                st.session_state.attestation_status = success
-                st.session_state.attestation_message = message
-                st.session_state.attestation_token = token
-                st.session_state.attestation_claims = claims
-                
-                # Store debug information
-                debug_info = {
-                    "simulation_mode": is_simulated,
-                    "in_tee_environment": in_tee,
-                    "token_length": len(token) if token else 0,
-                    "has_claims": claims is not None,
-                    "claims_keys": list(claims.keys()) if claims else []
-                }
-                
-                # Display the result
-                if success:
-                    st.success(message)
-                    
-                    # Display token information
-                    st.subheader("Attestation Token Information")
-                    
-                    # Display issuer
-                    issuer = claims.get("iss", "Unknown")
-                    st.write(f"**Issuer:** {issuer}")
-                    
-                    # Display audience
-                    audience = claims.get("aud", "Unknown")
-                    st.write(f"**Audience:** {audience}")
-                    
-                    # Display timestamps
-                    iat = claims.get("iat")
-                    if iat:
-                        iat_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(iat))
-                        st.write(f"**Issued at:** {iat_time}")
-                    
-                    exp = claims.get("exp")
-                    if exp:
-                        exp_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(exp))
-                        st.write(f"**Expires at:** {exp_time}")
-                    
-                    # Display nonces if present
-                    nonces = claims.get("nonces", [])
-                    if nonces:
-                        st.write("**Nonces in token:**")
-                        for nonce in nonces:
-                            st.code(nonce)
-                        
-                        # Check if message indicates nonce verification failed
-                        if "nonce verification failed" in message:
-                            st.warning("⚠️ The attestation token was generated successfully, but the nonce verification failed. This means the token is valid but might not have been generated specifically for this request.")
-                    else:
-                        st.warning("⚠️ No nonces found in the attestation token. This is unusual but the token is still valid for basic attestation purposes.")
-                    
-                    # Instead of using nested expanders, use collapsible sections with st.write
-                    st.write("**Full Claims:**")
-                    st.json(claims)
-                    
-                    # Display token without using an expander
-                    st.write("**Raw Token:**")
-                    st.code(token)
-                        
-                    # Add Debug Token button
-                    if st.button("Debug Token Structure"):
-                        try:
-                            # Split the token into its parts
-                            token_parts = token.split('.')
-                            if len(token_parts) == 3:
-                                header_b64, payload_b64, signature_b64 = token_parts
-                                
-                                # Decode header
-                                # Add padding if needed
-                                header_b64 += '=' * ((4 - len(header_b64) % 4) % 4)
-                                header_json = base64.urlsafe_b64decode(header_b64).decode('utf-8')
-                                header = json.loads(header_json)
-                                
-                                # Decode payload
-                                # Add padding if needed
-                                payload_b64 += '=' * ((4 - len(payload_b64) % 4) % 4)
-                                payload_json = base64.urlsafe_b64decode(payload_b64).decode('utf-8')
-                                payload = json.loads(payload_json)
-                                
-                                # Display decoded parts
-                                st.subheader("Token Structure")
-                                
-                                col1, col2 = st.columns(2)
-                                
-                                with col1:
-                                    st.write("**Header:**")
-                                    st.json(header)
-                                
-                                with col2:
-                                    st.write("**Signature (first 20 chars):**")
-                                    st.code(signature_b64[:20] + "...")
-                                
-                                st.write("**Payload (Decoded Claims):**")
-                                st.json(payload)
-                                
-                                # Display any additional fields that might be of interest
-                                if "tee" in payload:
-                                    st.subheader("TEE-Specific Claims")
-                                    st.json(payload["tee"])
-                                
-                                # Check for any nested structures and display them
-                                for key, value in payload.items():
-                                    if isinstance(value, dict) and key != "tee":
-                                        st.subheader(f"{key.capitalize()} Details")
-                                        st.json(value)
-                            else:
-                                st.error("Invalid token format. Expected 3 parts (header.payload.signature)")
-                        except Exception as e:
-                            st.error(f"Error decoding token: {str(e)}")
-                            st.code(traceback.format_exc())
-                else:
-                    st.error(message)
-                    
-                    # Show more detailed debug information
-                    with st.expander("Debug Information"):
-                        st.write("**Token (first 100 chars):**", token[:100] if token else "None")
-                        
-                        if claims:
-                            st.write("**Claims:**")
-                            st.json(claims)
-                        
-                        st.write("**Debug Info:**")
-                        st.json(debug_info)
-                        
-                        # Provide troubleshooting guidance
-                        st.markdown("""
-                        ### Troubleshooting Tips:
-                        
-                        1. **Check if you're running in a real TEE environment**
-                           - Make sure you're running in a Confidential VM with TEE support
-                           - Verify that the container has access to the TEE socket
-                        
-                        2. **Check environment variables**
-                           - Ensure SIMULATE_ATTESTATION is set correctly
-                        
-                        3. **Check socket path**
-                           - The default socket path is `/run/container_launcher/teeserver.sock`
-                           - Make sure this path exists and is accessible
-                           
-                        4. **Try simulation mode**
-                           - Set SIMULATE_ATTESTATION=true to test in simulation mode
-                        """)
-    
-    # Chat Statistics
-    st.subheader("Chat Statistics")
-    st.write(f"Messages: {len(st.session_state.messages)}")
-    
-    if st.button("Clear Chat"):
-        st.session_state.messages = []
-        st.experimental_rerun()
 
 # Main content area - now full width
 st.title("🤖 Flare Token Swap Assistant")
