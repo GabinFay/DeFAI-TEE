@@ -358,18 +358,11 @@ class VtpmValidation:
 def generate_and_verify_attestation() -> Tuple[bool, str, Optional[str], Optional[Dict[str, Any]]]:
     """
     Generate an attestation token from the TEE and verify it.
-    
-    Returns:
-        tuple: (success, message, token, claims)
-            - success (bool): Whether the attestation was successful
-            - message (str): A message describing the result
-            - token (str): The attestation token if successful, None otherwise
-            - claims (dict): The validated token claims if successful, None otherwise
     """
     try:
         # Generate a random nonce for the attestation request
-        # This should be unique for each request to prevent replay attacks
         nonce = secrets.token_hex(16)  # 16 bytes of randomness = 32 hex chars
+        logger.info(f"Generated nonce for attestation: {nonce}")
         
         # Check if we're in simulation mode
         simulate = os.environ.get("SIMULATE_ATTESTATION", "false").lower() == "true"
@@ -384,11 +377,59 @@ def generate_and_verify_attestation() -> Tuple[bool, str, Optional[str], Optiona
         validator = VtpmValidation()
         claims = validator.validate_token(token)
         
+        # Log the full claims for debugging
+        logger.info(f"Received token claims: {json.dumps(claims, indent=2)}")
+        
+        # Check for nonces in various possible locations
+        token_nonces = claims.get("nonces", [])
+        
+        # Also check for singular "nonce" field
+        if not token_nonces and "nonce" in claims:
+            if isinstance(claims["nonce"], list):
+                token_nonces = claims["nonce"]
+            else:
+                token_nonces = [claims["nonce"]]
+            logger.info(f"Found nonce in singular field: {token_nonces}")
+        
+        # Check for eat_nonce field which is used in Confidential Space tokens
+        if not token_nonces and "eat_nonce" in claims:
+            if isinstance(claims["eat_nonce"], list):
+                token_nonces = claims["eat_nonce"]
+            else:
+                token_nonces = [claims["eat_nonce"]]
+            logger.info(f"Found nonce in eat_nonce field: {token_nonces}")
+        
+        # Check for nonces in nested structures
+        if not token_nonces:
+            # Look for nonces in any nested dictionaries
+            for key, value in claims.items():
+                if isinstance(value, dict) and "nonces" in value:
+                    token_nonces = value["nonces"]
+                    logger.info(f"Found nonces in nested field {key}: {token_nonces}")
+                    break
+                elif isinstance(value, dict) and "nonce" in value:
+                    if isinstance(value["nonce"], list):
+                        token_nonces = value["nonce"]
+                    else:
+                        token_nonces = [value["nonce"]]
+                    logger.info(f"Found nonce in nested field {key}: {token_nonces}")
+                    break
+                elif isinstance(value, dict) and "eat_nonce" in value:
+                    if isinstance(value["eat_nonce"], list):
+                        token_nonces = value["eat_nonce"]
+                    else:
+                        token_nonces = [value["eat_nonce"]]
+                    logger.info(f"Found nonce in nested eat_nonce field {key}: {token_nonces}")
+                    break
+        
+        # Update the claims with the found nonces for display
+        if token_nonces and "nonces" not in claims:
+            claims["nonces"] = token_nonces
+        
         # In simulation mode, we'll verify the nonce is included
         if simulate:
             # Check if our nonce is in the token
-            token_nonces = claims.get("nonces", [])
-            if nonce in token_nonces:
+            if token_nonces and nonce in token_nonces:
                 return True, "Attestation generated and verified successfully with nonce (simulation mode)!", token, claims
             else:
                 # In simulation mode, we still want to succeed even if nonce verification fails
@@ -397,20 +438,20 @@ def generate_and_verify_attestation() -> Tuple[bool, str, Optional[str], Optiona
         
         # For real mode, we'll check if we got a valid token with claims
         if claims:
-            # Check if our nonce is in the token
-            token_nonces = claims.get("nonces", [])
-            
             if token_nonces and nonce in token_nonces:
                 # Perfect case: nonce is included and matches
                 logger.info("Attestation successful with nonce verification")
                 return True, "Attestation generated and verified successfully with nonce!", token, claims
-            else:
-                # We got a valid token but without our nonce
-                # This is still acceptable for many use cases
-                logger.warning("Attestation successful but nonce verification failed", 
+            elif token_nonces:
+                # We got nonces but our nonce isn't included
+                logger.warning("Attestation successful but nonce mismatch", 
                               expected=nonce, 
                               found=token_nonces)
-                return True, "Attestation generated and verified successfully (but nonce verification failed)!", token, claims
+                return True, "Attestation generated and verified successfully (but nonce mismatch)!", token, claims
+            else:
+                # No nonces found in the token
+                logger.warning("Attestation successful but no nonces found in token")
+                return True, "Attestation generated and verified successfully (but no nonces found in token)!", token, claims
         else:
             return False, "Attestation verification failed: no claims found in token", token, None
             

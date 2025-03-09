@@ -12,6 +12,7 @@ import threading
 from io import StringIO
 # Import the attestation module
 from tee_attestation import generate_and_verify_attestation, is_running_in_tee
+import base64
 
 # Initialize session state variables
 if 'attestation_status' not in st.session_state:
@@ -820,6 +821,58 @@ with st.sidebar:
                     # Display token in an expander
                     with st.expander("View Raw Token"):
                         st.code(token)
+                        
+                    # Add Debug Token button
+                    if st.button("Debug Token Structure"):
+                        try:
+                            # Split the token into its parts
+                            token_parts = token.split('.')
+                            if len(token_parts) == 3:
+                                header_b64, payload_b64, signature_b64 = token_parts
+                                
+                                # Decode header
+                                # Add padding if needed
+                                header_b64 += '=' * ((4 - len(header_b64) % 4) % 4)
+                                header_json = base64.urlsafe_b64decode(header_b64).decode('utf-8')
+                                header = json.loads(header_json)
+                                
+                                # Decode payload
+                                # Add padding if needed
+                                payload_b64 += '=' * ((4 - len(payload_b64) % 4) % 4)
+                                payload_json = base64.urlsafe_b64decode(payload_b64).decode('utf-8')
+                                payload = json.loads(payload_json)
+                                
+                                # Display decoded parts
+                                st.subheader("Token Structure")
+                                
+                                col1, col2 = st.columns(2)
+                                
+                                with col1:
+                                    st.write("**Header:**")
+                                    st.json(header)
+                                
+                                with col2:
+                                    st.write("**Signature (first 20 chars):**")
+                                    st.code(signature_b64[:20] + "...")
+                                
+                                st.write("**Payload (Decoded Claims):**")
+                                st.json(payload)
+                                
+                                # Display any additional fields that might be of interest
+                                if "tee" in payload:
+                                    st.subheader("TEE-Specific Claims")
+                                    st.json(payload["tee"])
+                                
+                                # Check for any nested structures and display them
+                                for key, value in payload.items():
+                                    if isinstance(value, dict) and key != "tee":
+                                        st.subheader(f"{key.capitalize()} Details")
+                                        st.json(value)
+                            else:
+                                st.error("Invalid token format. Expected 3 parts (header.payload.signature)")
+                        except Exception as e:
+                            st.error(f"Error decoding token: {str(e)}")
+                            st.code(traceback.format_exc())
                 else:
                     st.error(message)
                     
