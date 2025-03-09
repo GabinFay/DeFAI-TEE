@@ -11,7 +11,17 @@ import sys
 import threading
 from io import StringIO
 # Import the attestation module
-from tee_attestation import generate_and_verify_attestation
+from tee_attestation import generate_and_verify_attestation, is_running_in_tee
+
+# Initialize session state variables
+if 'attestation_status' not in st.session_state:
+    st.session_state.attestation_status = None
+if 'attestation_message' not in st.session_state:
+    st.session_state.attestation_message = None
+if 'attestation_token' not in st.session_state:
+    st.session_state.attestation_token = None
+if 'attestation_claims' not in st.session_state:
+    st.session_state.attestation_claims = None
 
 # Custom stdout redirector for real-time display in Streamlit
 class StreamlitStdoutRedirector:
@@ -727,71 +737,121 @@ with st.sidebar:
         st.session_state.attestation_debug = None
     
     # Display simulation status
-    is_simulated = os.environ.get("SIMULATE_ATTESTATION", "false").lower() == "true"
-    if is_simulated:
-        st.info("⚠️ Running in simulation mode (SIMULATE_ATTESTATION=true)")
-    else:
-        st.info("🔒 Running in real TEE attestation mode (SIMULATE_ATTESTATION=false)")
-    
-    # Add Generate Attestation button
-    if st.button("Generate Attestation"):
-        with st.spinner("Generating and verifying TEE attestation..."):
-            success, message, token, claims = generate_and_verify_attestation()
-            st.session_state.attestation_status = success
-            st.session_state.attestation_message = message
-            st.session_state.attestation_token = token
-            st.session_state.attestation_claims = claims
-            
-            # Store debug information
-            debug_info = {
-                "simulation_mode": is_simulated,
-                "token_length": len(token) if token else 0,
-                "has_nonces": "nonces" in claims if claims else False,
-                "nonces": claims.get("nonces", []) if claims else []
-            }
-            st.session_state.attestation_debug = debug_info
-    
-    # Display attestation status if available
-    if st.session_state.attestation_status is not None:
-        if st.session_state.attestation_status:
-            st.success(st.session_state.attestation_message)
-            
-            # Show attestation details
-            if st.session_state.attestation_claims:
-                with st.expander("Attestation Details"):
-                    st.write("**Issuer:** ", st.session_state.attestation_claims.get("iss", "Unknown"))
-                    st.write("**Issued at:** ", time.strftime("%Y-%m-%d %H:%M:%S", 
-                        time.localtime(st.session_state.attestation_claims.get("iat", 0))))
-                    st.write("**Expires at:** ", time.strftime("%Y-%m-%d %H:%M:%S", 
-                        time.localtime(st.session_state.attestation_claims.get("exp", 0))))
-                    st.write("**Audience:** ", st.session_state.attestation_claims.get("aud", "Unknown"))
-                    
-                    # Display nonces
-                    nonces = st.session_state.attestation_claims.get("nonces", [])
-                    st.write("**Nonces:**")
-                    for nonce in nonces:
-                        st.code(nonce)
-            
-            # Display token
-            if st.session_state.attestation_token:
-                token_display = st.session_state.attestation_token[:20] + "..." if len(st.session_state.attestation_token) > 20 else st.session_state.attestation_token
-                with st.expander("Attestation Token"):
-                    st.code(st.session_state.attestation_token)
-                    if st.button("Copy Token to Clipboard"):
-                        st.session_state.clipboard = st.session_state.attestation_token
-                        st.success("Token copied to clipboard!")
+    with st.expander("TEE Attestation", expanded=False):
+        is_simulated = os.environ.get("SIMULATE_ATTESTATION", "false").lower() == "true"
+        if is_simulated:
+            st.info("⚠️ Running in simulation mode (SIMULATE_ATTESTATION=true)")
         else:
-            st.error(st.session_state.attestation_message)
-            
-            # Show debug information if available
-            if st.session_state.attestation_debug:
-                with st.expander("Debug Information"):
-                    st.json(st.session_state.attestation_debug)
+            st.info("🔒 Running in real TEE attestation mode (SIMULATE_ATTESTATION=false)")
+        
+        # Check if we're running in a TEE environment
+        in_tee = is_running_in_tee()
+        
+        if not in_tee and not is_simulated:
+            st.warning("⚠️ Not running in a TEE environment. TEE socket not found.")
+            st.markdown("""
+            To run in a TEE environment:
+            1. Make sure you're running in a Confidential VM with TEE support
+            2. Make sure the container has access to the TEE socket
+            3. Or set SIMULATE_ATTESTATION=true for testing
+            """)
+        
+        # Add Generate Attestation button
+        if st.button("Generate Attestation"):
+            with st.spinner("Generating and verifying TEE attestation..."):
+                success, message, token, claims = generate_and_verify_attestation()
+                st.session_state.attestation_status = success
+                st.session_state.attestation_message = message
+                st.session_state.attestation_token = token
+                st.session_state.attestation_claims = claims
                 
-            # If token exists but validation failed, show it for debugging
-            if st.session_state.attestation_token:
-                with st.expander("Raw Token (Failed Validation)"):
-                    st.code(st.session_state.attestation_token)
+                # Store debug information
+                debug_info = {
+                    "simulation_mode": is_simulated,
+                    "in_tee_environment": in_tee,
+                    "token_length": len(token) if token else 0,
+                    "has_claims": claims is not None,
+                    "claims_keys": list(claims.keys()) if claims else []
+                }
+                
+                # Display the result
+                if success:
+                    st.success(message)
+                    
+                    # Display token information
+                    st.subheader("Attestation Token Information")
+                    
+                    # Display issuer
+                    issuer = claims.get("iss", "Unknown")
+                    st.write(f"**Issuer:** {issuer}")
+                    
+                    # Display audience
+                    audience = claims.get("aud", "Unknown")
+                    st.write(f"**Audience:** {audience}")
+                    
+                    # Display timestamps
+                    iat = claims.get("iat")
+                    if iat:
+                        iat_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(iat))
+                        st.write(f"**Issued at:** {iat_time}")
+                    
+                    exp = claims.get("exp")
+                    if exp:
+                        exp_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(exp))
+                        st.write(f"**Expires at:** {exp_time}")
+                    
+                    # Display nonces if present
+                    nonces = claims.get("nonces", [])
+                    if nonces:
+                        st.write("**Nonces in token:**")
+                        for nonce in nonces:
+                            st.code(nonce)
+                        
+                        # Check if message indicates nonce verification failed
+                        if "nonce verification failed" in message:
+                            st.warning("⚠️ The attestation token was generated successfully, but the nonce verification failed. This means the token is valid but might not have been generated specifically for this request.")
+                    else:
+                        st.warning("⚠️ No nonces found in the attestation token. This is unusual but the token is still valid for basic attestation purposes.")
+                    
+                    # Display full claims in an expander
+                    with st.expander("View Full Claims"):
+                        st.json(claims)
+                    
+                    # Display token in an expander
+                    with st.expander("View Raw Token"):
+                        st.code(token)
+                else:
+                    st.error(message)
+                    
+                    # Show more detailed debug information
+                    with st.expander("Debug Information"):
+                        st.write("**Token (first 100 chars):**", token[:100] if token else "None")
+                        
+                        if claims:
+                            st.write("**Claims:**")
+                            st.json(claims)
+                        
+                        st.write("**Debug Info:**")
+                        st.json(debug_info)
+                        
+                        # Provide troubleshooting guidance
+                        st.markdown("""
+                        ### Troubleshooting Tips:
+                        
+                        1. **Check if you're running in a real TEE environment**
+                           - Make sure you're running in a Confidential VM with TEE support
+                           - Verify that the container has access to the TEE socket
+                        
+                        2. **Check environment variables**
+                           - Ensure SIMULATE_ATTESTATION is set correctly
+                        
+                        3. **Check socket path**
+                           - The default socket path is `/run/container_launcher/teeserver.sock`
+                           - Make sure this path exists and is accessible
+                           
+                        4. **Try simulation mode**
+                           - Set SIMULATE_ATTESTATION=true to test in simulation mode
+                        """)
     
     # Chat Statistics
     st.subheader("Chat Statistics")
