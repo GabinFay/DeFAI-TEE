@@ -13,6 +13,11 @@ from io import StringIO
 # Import the attestation module
 from tee_attestation import generate_and_verify_attestation, is_running_in_tee
 import base64
+from datetime import datetime
+# Import necessary modules for token balance functionality
+from web3 import Web3
+from web3.middleware import geth_poa_middleware
+from eth_account import Account
 
 # Initialize session state variables
 if 'attestation_status' not in st.session_state:
@@ -23,6 +28,14 @@ if 'attestation_token' not in st.session_state:
     st.session_state.attestation_token = None
 if 'attestation_claims' not in st.session_state:
     st.session_state.attestation_claims = None
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "tool_logs" not in st.session_state:
+    st.session_state.tool_logs = []
+if "token_balances" not in st.session_state:
+    st.session_state.token_balances = {}
+if "last_balance_update" not in st.session_state:
+    st.session_state.last_balance_update = None
 
 # Custom stdout redirector for real-time display in Streamlit
 class StreamlitStdoutRedirector:
@@ -82,6 +95,38 @@ load_dotenv()
 
 # Retrieve Gemini API key from .env
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+# ERC20 Token ABI (only the necessary parts)
+ERC20_ABI = [
+    {
+        "constant": True,
+        "inputs": [{"name": "_owner", "type": "address"}],
+        "name": "balanceOf",
+        "outputs": [{"name": "balance", "type": "uint256"}],
+        "type": "function",
+    },
+    {
+        "constant": True,
+        "inputs": [],
+        "name": "decimals",
+        "outputs": [{"name": "", "type": "uint8"}],
+        "type": "function",
+    },
+    {
+        "constant": True,
+        "inputs": [],
+        "name": "symbol",
+        "outputs": [{"name": "", "type": "string"}],
+        "type": "function",
+    },
+    {
+        "constant": True,
+        "inputs": [],
+        "name": "name",
+        "outputs": [{"name": "", "type": "string"}],
+        "type": "function",
+    },
+]
 
 # Flare token addresses
 FLARE_TOKENS = {
@@ -208,6 +253,121 @@ swap_function = FunctionDeclaration(
             }
         },
         "required": ["token_in", "token_out", "amount_in_eth"]
+    }
+)
+
+# Define function for adding liquidity
+add_liquidity_function = FunctionDeclaration(
+    name="add_liquidity",
+    description="Add liquidity to a Uniswap V3 pool on Flare network",
+    parameters={
+        "type": "OBJECT",
+        "properties": {
+            "token0": {
+                "type": "STRING",
+                "description": "Name or address of token0 (must be lower address than token1)"
+            },
+            "token1": {
+                "type": "STRING",
+                "description": "Name or address of token1 (must be higher address than token0)"
+            },
+            "amount0": {
+                "type": "NUMBER",
+                "description": "Amount of token0 in token units"
+            },
+            "amount1": {
+                "type": "NUMBER",
+                "description": "Amount of token1 in token units"
+            },
+            "fee": {
+                "type": "INTEGER",
+                "description": "Fee tier (3000 = 0.3%, 500 = 0.05%, 10000 = 1%). Default is 3000."
+            }
+        },
+        "required": ["token0", "token1", "amount0", "amount1"]
+    }
+)
+
+# Define function for removing liquidity
+remove_liquidity_function = FunctionDeclaration(
+    name="remove_liquidity",
+    description="Remove liquidity from a Uniswap V3 position on Flare network",
+    parameters={
+        "type": "OBJECT",
+        "properties": {
+            "position_id": {
+                "type": "INTEGER",
+                "description": "The ID of the position to remove liquidity from"
+            },
+            "percent_to_remove": {
+                "type": "NUMBER",
+                "description": "Percentage of liquidity to remove (1-100). Default is 100 (remove all)."
+            }
+        },
+        "required": ["position_id"]
+    }
+)
+
+# Define function for getting positions
+get_positions_function = FunctionDeclaration(
+    name="get_positions",
+    description="Get all Uniswap V3 positions for a wallet on Flare network",
+    parameters={
+        "type": "OBJECT",
+        "properties": {
+            "wallet_address": {
+                "type": "STRING",
+                "description": "The wallet address to get positions for. If not provided, uses the connected wallet."
+            }
+        },
+        "required": []
+    }
+)
+
+# Define function for getting token balances
+get_token_balances_function = FunctionDeclaration(
+    name="get_token_balances",
+    description="Get token balances for a wallet on Flare network",
+    parameters={
+        "type": "OBJECT",
+        "properties": {
+            "wallet_address": {
+                "type": "STRING",
+                "description": "The wallet address to get balances for. If not provided, uses the connected wallet."
+            },
+            "tokens": {
+                "type": "ARRAY",
+                "items": {
+                    "type": "STRING"
+                },
+                "description": "List of token symbols or addresses to check balances for. If not provided, returns balances for common tokens."
+            }
+        },
+        "required": []
+    }
+)
+
+# Define function for getting pool information
+get_pool_info_function = FunctionDeclaration(
+    name="get_pool_info",
+    description="Get information about a Uniswap V3 pool on Flare network",
+    parameters={
+        "type": "OBJECT",
+        "properties": {
+            "token0": {
+                "type": "STRING",
+                "description": "Name or address of token0"
+            },
+            "token1": {
+                "type": "STRING",
+                "description": "Name or address of token1"
+            },
+            "fee": {
+                "type": "INTEGER",
+                "description": "Fee tier (3000 = 0.3%, 500 = 0.05%, 10000 = 1%). Default is 3000."
+            }
+        },
+        "required": ["token0", "token1"]
     }
 )
 
@@ -441,11 +601,452 @@ def handle_function_call(function_call):
 ```""")
             
             return error_message
+    elif function_call.name == "add_liquidity":
+        # Parse arguments
+        args = function_call.args
+        token0 = args.get("token0")
+        token1 = args.get("token1")
+        amount0 = args.get("amount0")
+        amount1 = args.get("amount1")
+        fee = args.get("fee", 3000)  # Default to 0.3% fee tier
+        
+        # Store original token names/addresses for display
+        original_token0 = token0
+        original_token1 = token1
+        
+        # Resolve token names to addresses if needed
+        token0_symbol = None
+        token1_symbol = None
+        
+        # Check if token0 is a name rather than an address
+        if token0 and not token0.startswith('0x'):
+            token0_symbol = token0  # Store the symbol
+            # Try to find in FLARE_TOKENS first
+            if token0 in FLARE_TOKENS:
+                token0 = FLARE_TOKENS[token0]
+            # Then try KINETIC_TOKENS
+            elif token0 in KINETIC_TOKENS:
+                token0 = KINETIC_TOKENS[token0]
+            else:
+                return {
+                    "success": False,
+                    "message": f"Could not resolve token name '{token0}' to an address",
+                    "token0": token0,
+                    "token1": token1
+                }
+        else:
+            # Find token symbol by address
+            for name, address in {**FLARE_TOKENS, **KINETIC_TOKENS}.items():
+                if address.lower() == token0.lower():
+                    token0_symbol = name
+                    break
+        
+        # Check if token1 is a name rather than an address
+        if token1 and not token1.startswith('0x'):
+            token1_symbol = token1  # Store the symbol
+            # Try to find in FLARE_TOKENS first
+            if token1 in FLARE_TOKENS:
+                token1 = FLARE_TOKENS[token1]
+            # Then try KINETIC_TOKENS
+            elif token1 in KINETIC_TOKENS:
+                token1 = KINETIC_TOKENS[token1]
+            else:
+                return {
+                    "success": False,
+                    "message": f"Could not resolve token name '{token1}' to an address",
+                    "token0": token0,
+                    "token1": token1
+                }
+        else:
+            # Find token symbol by address
+            for name, address in {**FLARE_TOKENS, **KINETIC_TOKENS}.items():
+                if address.lower() == token1.lower():
+                    token1_symbol = name
+                    break
+        
+        # Log the function call
+        log_message = f"🔄 Adding liquidity: {amount0} {token0_symbol or token0} and {amount1} {token1_symbol or token1} with fee tier {fee/10000:.2f}%\n"
+        st.session_state.tool_logs.append(log_message)
+        
+        try:
+            # Import the add_liquidity function
+            from flare_uniswap_add_liquidity import add_liquidity
+            
+            # Redirect stdout to capture output
+            stdout_redirector = StreamlitStdoutRedirector(st.empty())
+            sys.stdout = stdout_redirector
+            
+            # Call the add_liquidity function
+            result = add_liquidity(token0, token1, amount0, amount1, fee)
+            
+            # Reset stdout
+            sys.stdout = stdout_redirector.original_stdout
+            
+            # Get the output
+            output = stdout_redirector.get_value()
+            
+            # Check if the result contains a transaction hash
+            if result and "transaction_hash" in result:
+                tx_hash = result["transaction_hash"]
+                return {
+                    "success": True,
+                    "message": f"Successfully added liquidity to the {token0_symbol or token0}/{token1_symbol or token1} pool",
+                    "transaction_hash": tx_hash,
+                    "output": output
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "Failed to add liquidity",
+                    "output": output
+                }
+        except Exception as e:
+            # Reset stdout in case of error
+            if 'stdout_redirector' in locals():
+                sys.stdout = stdout_redirector.original_stdout
+            
+            error_message = f"Error adding liquidity: {str(e)}"
+            st.session_state.tool_logs.append(f"❌ {error_message}\n")
+            
+            return {
+                "success": False,
+                "message": error_message,
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }
+    elif function_call.name == "remove_liquidity":
+        # Parse arguments
+        args = function_call.args
+        position_id = args.get("position_id")
+        percent_to_remove = args.get("percent_to_remove", 100)  # Default to removing all liquidity
+        
+        # Log the function call
+        log_message = f"🔄 Removing {percent_to_remove}% liquidity from position {position_id}\n"
+        st.session_state.tool_logs.append(log_message)
+        
+        try:
+            # Import the remove_liquidity function
+            from flare_uniswap_remove_liquidity import remove_liquidity
+            
+            # Redirect stdout to capture output
+            stdout_redirector = StreamlitStdoutRedirector(st.empty())
+            sys.stdout = stdout_redirector
+            
+            # Call the remove_liquidity function
+            result = remove_liquidity(position_id, percent_to_remove)
+            
+            # Reset stdout
+            sys.stdout = stdout_redirector.original_stdout
+            
+            # Get the output
+            output = stdout_redirector.get_value()
+            
+            # Check if the result contains a transaction hash
+            if result and "transaction_hash" in result:
+                tx_hash = result["transaction_hash"]
+                return {
+                    "success": True,
+                    "message": f"Successfully removed {percent_to_remove}% liquidity from position {position_id}",
+                    "transaction_hash": tx_hash,
+                    "output": output
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "Failed to remove liquidity",
+                    "output": output
+                }
+        except Exception as e:
+            # Reset stdout in case of error
+            if 'stdout_redirector' in locals():
+                sys.stdout = stdout_redirector.original_stdout
+            
+            error_message = f"Error removing liquidity: {str(e)}"
+            st.session_state.tool_logs.append(f"❌ {error_message}\n")
+            
+            return {
+                "success": False,
+                "message": error_message,
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }
+    elif function_call.name == "get_positions":
+        # Parse arguments
+        args = function_call.args
+        wallet_address = args.get("wallet_address")  # This can be None, which will use the connected wallet
+        
+        # Log the function call
+        log_message = f"🔍 Getting positions for wallet {wallet_address or 'connected wallet'}\n"
+        st.session_state.tool_logs.append(log_message)
+        
+        try:
+            # Import the necessary functions
+            from flare_uniswap_sdk_test import initialize_uniswap, test_get_positions
+            
+            # Redirect stdout to capture output
+            stdout_redirector = StreamlitStdoutRedirector(st.empty())
+            sys.stdout = stdout_redirector
+            
+            # Initialize Uniswap
+            uniswap = initialize_uniswap()
+            
+            # Get positions
+            positions = test_get_positions(uniswap, wallet_address)
+            
+            # Restore stdout
+            sys.stdout = sys.__stdout__
+            
+            # Return the positions
+            return {
+                "success": True,
+                "positions": positions,
+                "output": stdout_redirector.get_value()
+            }
+        except Exception as e:
+            # Restore stdout
+            sys.stdout = sys.__stdout__
+            
+            error_message = f"❌ Error getting positions: {str(e)}"
+            st.session_state.tool_logs.append(error_message)
+            
+            return {
+                "success": False,
+                "message": error_message,
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }
+    elif function_call.name == "get_token_balances":
+        # Parse arguments
+        args = function_call.args
+        wallet_address = args.get("wallet_address")  # This can be None, which will use the connected wallet
+        tokens = args.get("tokens", [])  # This can be None or empty, which will use common tokens
+        
+        # Log the function call
+        log_message = f"💰 Getting token balances for wallet {wallet_address or 'connected wallet'}\n"
+        st.session_state.tool_logs.append(log_message)
+        
+        try:
+            # Import the necessary functions
+            from flare_uniswap_sdk_test import initialize_uniswap
+            from uniswap.uniswap import Uniswap
+            from flare_router import FlareRouter
+            
+            # Redirect stdout to capture output
+            stdout_redirector = StreamlitStdoutRedirector(st.empty())
+            sys.stdout = stdout_redirector
+            
+            # Initialize Uniswap
+            uniswap = initialize_uniswap()
+            
+            # Define common tokens if none provided
+            if not tokens:
+                # Common Flare tokens
+                tokens = ["WFLR", "USDC", "USDT", "SGB", "FLR", "XRP"]
+            
+            # Get balances
+            balances = {}
+            
+            # Get native token (FLR) balance
+            if "FLR" in tokens or not tokens:
+                eth_balance = uniswap.get_eth_balance()
+                eth_balance_formatted = uniswap.w3.from_wei(eth_balance, 'ether')
+                balances["FLR"] = {
+                    "symbol": "FLR",
+                    "name": "Flare",
+                    "balance": float(eth_balance_formatted),
+                    "balance_wei": str(eth_balance),
+                    "address": "native"
+                }
+                print(f"FLR Balance: {eth_balance_formatted}")
+            
+            # Get token balances
+            flare_router = FlareRouter(uniswap)
+            token_registry = flare_router.token_registry
+            
+            for token in tokens:
+                if token == "FLR":
+                    continue  # Already handled above
+                
+                try:
+                    # Check if token is a symbol or address
+                    if token.startswith("0x"):
+                        token_address = token
+                        token_info = token_registry.get_token_by_address(token_address)
+                        if token_info:
+                            token_symbol = token_info["symbol"]
+                        else:
+                            # Try to get symbol from contract
+                            try:
+                                erc20 = uniswap.get_token(token_address)
+                                token_symbol = erc20.symbol
+                            except:
+                                token_symbol = "UNKNOWN"
+                    else:
+                        token_symbol = token
+                        token_info = token_registry.get_token_by_symbol(token_symbol)
+                        if not token_info:
+                            print(f"Token {token_symbol} not found in registry. Skipping.")
+                            continue
+                        token_address = token_info["address"]
+                    
+                    # Get balance
+                    balance_wei = uniswap.get_token_balance(token_address)
+                    decimals = token_info.get("decimals", 18) if token_info else 18
+                    balance = balance_wei / (10 ** decimals)
+                    
+                    # Add to balances
+                    balances[token_symbol] = {
+                        "symbol": token_symbol,
+                        "name": token_info.get("name", token_symbol),
+                        "balance": float(balance),
+                        "balance_wei": str(balance_wei),
+                        "address": token_address,
+                        "decimals": decimals
+                    }
+                    
+                    print(f"{token_symbol} Balance: {balance}")
+                except Exception as e:
+                    print(f"Error getting balance for token at {token_address}: {str(e)}")
+            
+            # Restore stdout
+            sys.stdout = sys.__stdout__
+            
+            # Return the balances
+            return {
+                "success": True,
+                "balances": balances,
+                "output": stdout_redirector.get_value()
+            }
+        except Exception as e:
+            # Restore stdout
+            sys.stdout = sys.__stdout__
+            
+            error_message = f"❌ Error getting token balances: {str(e)}"
+            st.session_state.tool_logs.append(error_message)
+            
+            return {
+                "success": False,
+                "message": error_message,
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }
+    elif function_call.name == "get_pool_info":
+        # Parse arguments
+        args = function_call.args
+        token0 = args.get("token0")
+        token1 = args.get("token1")
+        fee = args.get("fee", 3000)  # Default to 0.3% fee tier
+        
+        # Store original token names/addresses for display
+        original_token0 = token0
+        original_token1 = token1
+        
+        # Resolve token names to addresses if needed
+        token0_symbol = None
+        token1_symbol = None
+        
+        # Check if token0 is a name rather than an address
+        if token0 and not token0.startswith('0x'):
+            token0_symbol = token0  # Store the symbol
+            # Try to find in FLARE_TOKENS first
+            if token0 in FLARE_TOKENS:
+                token0 = FLARE_TOKENS[token0]
+            # Then try KINETIC_TOKENS
+            elif token0 in KINETIC_TOKENS:
+                token0 = KINETIC_TOKENS[token0]
+            else:
+                return {
+                    "success": False,
+                    "message": f"Could not resolve token name '{token0}' to an address",
+                    "token0": token0,
+                    "token1": token1
+                }
+        else:
+            # Find token symbol by address
+            for name, address in {**FLARE_TOKENS, **KINETIC_TOKENS}.items():
+                if address.lower() == token0.lower():
+                    token0_symbol = name
+                    break
+        
+        # Check if token1 is a name rather than an address
+        if token1 and not token1.startswith('0x'):
+            token1_symbol = token1  # Store the symbol
+            # Try to find in FLARE_TOKENS first
+            if token1 in FLARE_TOKENS:
+                token1 = FLARE_TOKENS[token1]
+            # Then try KINETIC_TOKENS
+            elif token1 in KINETIC_TOKENS:
+                token1 = KINETIC_TOKENS[token1]
+            else:
+                return {
+                    "success": False,
+                    "message": f"Could not resolve token name '{token1}' to an address",
+                    "token0": token0,
+                    "token1": token1
+                }
+        else:
+            # Find token symbol by address
+            for name, address in {**FLARE_TOKENS, **KINETIC_TOKENS}.items():
+                if address.lower() == token1.lower():
+                    token1_symbol = name
+                    break
+        
+        # Log the function call
+        log_message = f"🔍 Getting pool info for {token0_symbol or token0}/{token1_symbol or token1} with fee tier {fee/10000:.2f}%\n"
+        st.session_state.tool_logs.append(log_message)
+        
+        try:
+            # Import the necessary functions
+            from flare_uniswap_sdk_test import initialize_uniswap, test_get_pool_info
+            
+            # Redirect stdout to capture output
+            stdout_redirector = StreamlitStdoutRedirector(st.empty())
+            sys.stdout = stdout_redirector
+            
+            # Initialize Uniswap
+            uniswap, web3, wallet_address = initialize_uniswap()
+            
+            # Get pool info
+            pool = test_get_pool_info(uniswap, token0, token1, fee)
+            
+            # Reset stdout
+            sys.stdout = stdout_redirector.original_stdout
+            
+            # Get the output
+            output = stdout_redirector.get_value()
+            
+            if pool:
+                return {
+                    "success": True,
+                    "message": f"Successfully retrieved pool info for {token0_symbol or token0}/{token1_symbol or token1}",
+                    "pool_address": pool.address,
+                    "output": output
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"Pool not found for {token0_symbol or token0}/{token1_symbol or token1} with fee tier {fee/10000:.2f}%",
+                    "output": output
+                }
+        except Exception as e:
+            # Reset stdout in case of error
+            if 'stdout_redirector' in locals():
+                sys.stdout = stdout_redirector.original_stdout
+            
+            error_message = f"Error getting pool info: {str(e)}"
+            st.session_state.tool_logs.append(f"❌ {error_message}\n")
+            
+            return {
+                "success": False,
+                "message": error_message,
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }
     else:
-        # Unknown function
+        # Unknown function call
         unknown_function_message = {
             "success": False,
-            "message": f"Unknown function: {function_call.name}"
+            "message": f"Unknown function call: {function_call.name}"
         }
         
         # Add the error to the logs
@@ -461,14 +1062,21 @@ def generate_response(prompt, model_name="models/gemini-2.0-flash"):
         return
     
     try:
-        # Create a tool with the function declaration
+        # Create tools with the function declarations
         swap_tool = Tool(function_declarations=[swap_function])
+        liquidity_tools = Tool(function_declarations=[
+            add_liquidity_function,
+            remove_liquidity_function,
+            get_positions_function,
+            get_token_balances_function,
+            get_pool_info_function
+        ])
         
         # Initialize the Gemini model with function calling capability
         model = genai.GenerativeModel(
             model_name=model_name,
             system_instruction=SYSTEM_PROMPT,
-            tools=[swap_tool]
+            tools=[swap_tool, liquidity_tools]
         )
         
         # If we have chat history, convert it to the format Gemini expects
@@ -637,13 +1245,200 @@ def generate_response(prompt, model_name="models/gemini-2.0-flash"):
         # Print detailed error for debugging
         print(f"Error details: {traceback.format_exc()}")
 
-# Initialize session state for storing messages and settings
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+def initialize_web3():
+    """
+    Initialize Web3 connection to Flare network
+    
+    Returns:
+        tuple: (web3, wallet_address) - Web3 instance and user's wallet address
+    """
+    # Get environment variables
+    flare_rpc_url = os.getenv("FLARE_RPC_URL", "https://flare-api.flare.network/ext/C/rpc")
+    
+    # Get wallet address from environment or private key
+    wallet_address = os.getenv("WALLET_ADDRESS")
+    private_key = os.getenv("PRIVATE_KEY")
+    
+    if private_key and not wallet_address:
+        # Derive wallet address from private key
+        account = Account.from_key(private_key)
+        wallet_address = account.address
+    
+    if not wallet_address:
+        raise ValueError("WALLET_ADDRESS must be set in .env file or derived from PRIVATE_KEY")
+    
+    # Initialize Web3
+    web3 = Web3(Web3.HTTPProvider(flare_rpc_url))
+    web3.middleware_onion.inject(geth_poa_middleware, layer=0)
+    
+    # Check connection
+    if not web3.is_connected():
+        raise ConnectionError(f"Failed to connect to Flare network at {flare_rpc_url}")
+    
+    return web3, wallet_address
 
-# Initialize tool logs
-if "tool_logs" not in st.session_state:
-    st.session_state.tool_logs = []
+def get_token_balance(web3, token_address, wallet_address):
+    """
+    Get the balance of a specific token for a user
+    
+    Args:
+        web3 (Web3): Web3 instance
+        token_address (str): Token contract address
+        wallet_address (str): User's wallet address
+        
+    Returns:
+        dict: Token information including name, symbol, balance, and decimals
+    """
+    # Convert addresses to checksum format
+    token_address = Web3.to_checksum_address(token_address)
+    wallet_address = Web3.to_checksum_address(wallet_address)
+    
+    # Create token contract instance
+    token_contract = web3.eth.contract(address=token_address, abi=ERC20_ABI)
+    
+    try:
+        # Get token information
+        decimals = token_contract.functions.decimals().call()
+        symbol = token_contract.functions.symbol().call()
+        name = token_contract.functions.name().call()
+        
+        # Get token balance
+        balance_wei = token_contract.functions.balanceOf(wallet_address).call()
+        balance = balance_wei / (10 ** decimals)
+        
+        return {
+            "address": token_address,
+            "name": name,
+            "symbol": symbol,
+            "balance_wei": balance_wei,
+            "balance": float(balance),
+            "decimals": decimals
+        }
+    except Exception as e:
+        print(f"Error getting balance for token at {token_address}: {str(e)}")
+        return {
+            "address": token_address,
+            "name": "Unknown",
+            "symbol": "???",
+            "balance_wei": 0,
+            "balance": 0,
+            "decimals": 18
+        }
+
+def get_native_balance(web3, wallet_address):
+    """
+    Get the native FLR balance for a user
+    
+    Args:
+        web3 (Web3): Web3 instance
+        wallet_address (str): User's wallet address
+        
+    Returns:
+        dict: Token information for native FLR
+    """
+    # Get native balance
+    balance_wei = web3.eth.get_balance(wallet_address)
+    balance = web3.from_wei(balance_wei, 'ether')
+    
+    return {
+        "address": "native",
+        "name": "Flare",
+        "symbol": "FLR",
+        "balance_wei": balance_wei,
+        "balance": float(balance),
+        "decimals": 18
+    }
+
+def fetch_and_display_balances():
+    """
+    Fetch token balances using the direct Web3 approach from flare_token_balance.py
+    
+    Returns:
+        dict: Dictionary of token balances indexed by symbol
+    """
+    try:
+        # Initialize Web3 and get wallet address
+        web3, wallet_address = initialize_web3()
+        
+        # Get native FLR balance
+        native_balance = get_native_balance(web3, wallet_address)
+        
+        # Create balances dictionary
+        balances = {
+            native_balance["symbol"]: native_balance
+        }
+        
+        # Get token balances
+        for token_name, token_address in FLARE_TOKENS.items():
+            token_info = get_token_balance(web3, token_address, wallet_address)
+            balances[token_info["symbol"]] = token_info
+        
+        # Update session state
+        st.session_state.token_balances = balances
+        st.session_state.last_balance_update = datetime.now()
+        
+        return balances
+    except Exception as e:
+        print(f"Error fetching balances: {str(e)}")
+        st.error(f"Error fetching balances: {str(e)}")
+        return {}
+
+# Display token balances in the sidebar
+def display_balances_sidebar():
+    st.sidebar.markdown("## Your Token Balances")
+    
+    # Check if we need to update balances (every 5 minutes)
+    if (st.session_state.last_balance_update is None or 
+        (datetime.now() - st.session_state.last_balance_update).total_seconds() > 300):
+        with st.sidebar.status("Fetching balances...", expanded=False) as status:
+            balances = fetch_and_display_balances()
+            status.update(label="Balances updated!", state="complete", expanded=False)
+    else:
+        balances = st.session_state.token_balances
+    
+    # Display balances
+    if balances:
+        for symbol, token_data in balances.items():
+            balance = token_data["balance"]
+            if balance > 0:
+                st.sidebar.markdown(f"**{symbol}**: {balance:.6f}")
+    else:
+        st.sidebar.info("Connect your wallet to see balances")
+    
+    # Add refresh button
+    if st.sidebar.button("Refresh Balances"):
+        with st.sidebar.status("Refreshing balances...", expanded=False) as status:
+            fetch_and_display_balances()
+            status.update(label="Balances updated!", state="complete", expanded=False)
+            st.rerun()
+    
+    # Display available tools
+    st.sidebar.markdown("## Available Tools")
+    
+    # Swap tools
+    st.sidebar.markdown("### Token Swaps")
+    st.sidebar.markdown("- **swap_tokens**: Swap tokens on Uniswap V3")
+    
+    # Liquidity tools
+    st.sidebar.markdown("### Liquidity Management")
+    st.sidebar.markdown("- **add_liquidity**: Add liquidity to a Uniswap V3 pool")
+    st.sidebar.markdown("- **remove_liquidity**: Remove liquidity from a position")
+    st.sidebar.markdown("- **get_positions**: View your liquidity positions")
+    
+    # Information tools
+    st.sidebar.markdown("### Information")
+    st.sidebar.markdown("- **get_token_balances**: Check token balances")
+    st.sidebar.markdown("- **get_pool_info**: Get details about a liquidity pool")
+
+# Main app layout
+st.title("Flare Network AI Assistant")
+st.markdown("""
+This AI assistant can help you interact with the Flare Network. 
+You can ask it to swap tokens, add or remove liquidity, and more.
+""")
+
+# Display balances in the sidebar
+display_balances_sidebar()
 
 # Set default model to the first in the list
 if "model" not in st.session_state or st.session_state.model not in GEMINI_MODELS:
