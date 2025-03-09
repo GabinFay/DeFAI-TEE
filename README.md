@@ -108,4 +108,56 @@ PRIVATE_KEY=your_private_key
 
 ```
 pip install web3 uniswap-python python-dotenv eth-account
-``` 
+```
+
+## Docker Usage
+
+This project can be run as a Docker container. The Docker image is available on GitHub Container Registry.
+
+### Building the Docker Image
+
+You can build the Docker image locally using:
+
+```bash
+./build_and_push_image.sh
+```
+
+This script will build the image and push it to GitHub Container Registry.
+
+### Running the Docker Container
+
+There are two ways to run the Docker container:
+
+#### Option 1: Mount your .env file (RECOMMENDED)
+
+This is the recommended approach as it keeps your sensitive information out of the Docker image:
+
+```bash
+docker run -p 8501:8501 \
+  -v /path/to/your/.env:/app/.env \
+  ghcr.io/your-username/your-repo:latest
+```
+
+Replace `/path/to/your/.env` with the actual path to your .env file.
+
+#### Option 2: Provide environment variables directly
+
+You can also provide environment variables directly to the Docker container:
+
+```bash
+docker run -p 8501:8501 \
+  -e GEMINI_API_KEY=your_api_key \
+  -e FLARE_RPC_URL=your_rpc_url \
+  -e WALLET_ADDRESS=your_wallet_address \
+  -e PRIVATE_KEY=your_private_key \
+  ghcr.io/your-username/your-repo:latest
+```
+
+### Security Considerations
+
+When using Docker with blockchain applications, always be mindful of security:
+
+1. **NEVER include private keys or API keys in your Docker image**
+2. **ALWAYS use .env files or environment variables to pass sensitive information**
+3. **Verify your .dockerignore file excludes sensitive files**
+4. **Consider using Docker secrets for production deployments** 

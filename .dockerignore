@@ -1,0 +1,27 @@
+# Ignore .env files with sensitive information
+.env
+
+# Ignore git directory
+.git/
+
+# Ignore Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ignore virtual environments
+venv/
+env/
+ENV/
+
+# Ignore logs
+*.log
+
+# Ignore any local development files
+.DS_Store
+.idea/
+.vscode/
+
+# Ignore any other sensitive files
+*.pem
+*.key 
