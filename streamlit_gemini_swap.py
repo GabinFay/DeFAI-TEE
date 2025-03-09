@@ -18,6 +18,9 @@ from datetime import datetime
 from web3 import Web3
 from web3.middleware import geth_poa_middleware
 from eth_account import Account
+# Import the tools from the new module
+from tools import get_swap_tool, get_lending_tool, get_liquidity_tools, get_all_tools
+from tools import get_flare_tokens, get_kinetic_tokens
 
 # Initialize session state variables
 if 'attestation_status' not in st.session_state:
@@ -92,7 +95,7 @@ class StreamlitStdoutRedirector:
 try:
     from flare_uniswap_sdk_swap import swap_tokens
 except ImportError:
-    raise ImportError("Could not import swap_tokens function. Make sure the flare_bot2 module is in your Python path.")
+    raise ImportError("Could not import swap_tokens function. Make sure the flare_uniswap_sdk_swap module is in your Python path.")
 
 # Load environment variables from .env file
 load_dotenv()
@@ -132,34 +135,9 @@ ERC20_ABI = [
     },
 ]
 
-# Flare token addresses
-FLARE_TOKENS = {
-    'flrETH': '0x26A1faB310bd080542DC864647d05985360B16A5',
-    'sFLR': '0x12e605bc104e93B45e1aD99F9e555f659051c2BB',
-    'Joule': '0xE6505f92583103AF7ed9974DEC451A7Af4e3A3bE',
-    'Usdx': '0xFE2907DFa8DB6e320cDbF45f0aa888F6135ec4f8',
-    'USDT': '0x0B38e83B86d491735fEaa0a791F65c2B99535396',
-    'USDC': '0xFbDa5F676cB37624f28265A144A48B0d6e87d3b6',
-    'XVN': '0xaFBdD875858Dd48EE32A68Ac1349A5017095B161',
-    'WFLR': '0x1D80c49BbBCd1C0911346656B529DF9E5c2F783d',
-    'cysFLR': '0x19831cfB53A0dbeAD9866C43557C1D48DfF76567',
-    'WETH': '0x1502FA4be69d526124D453619276FacCab275d3D',
-}
-
-# Kinetic token addresses on Flare
-KINETIC_TOKENS = {
-    'sFLR': '0x12e605bc104e93B45e1aD99F9e555f659051c2BB',
-    'USDC.e': '0xFbDa5F676cB37624f28265A144A48B0d6e87d3b6',
-    'USDT': '0x0B38e83B86d491735fEaa0a791F65c2B99535396',
-    'wETH': '0x1502FA4be69d526124D453619276FacCab275d3D',
-    'flETH': '0x26A1faB310bd080542DC864647d05985360B16A5',
-    'kwETH': '0x5C2400019017AE61F811D517D088Df732642DbD0',
-    'ksFLR': '0x291487beC339c2fE5D83DD45F0a15EFC9Ac45656',
-    'kUSDC.e': '0xDEeBaBe05BDA7e8C1740873abF715f16164C29B8',
-    'kUSDT': '0x1e5bBC19E0B17D7d38F318C79401B3D16F2b93bb',
-    'rFLR': '0x26d460c3Cf931Fb2014FA436a49e3Af08619810e',
-    'kflETH': '0x40eE5dfe1D4a957cA8AC4DD4ADaf8A8fA76b1C16',
-}
+# Get token addresses from the tools module
+FLARE_TOKENS = get_flare_tokens()
+KINETIC_TOKENS = get_kinetic_tokens()
 
 # Configure Gemini API if key is available
 if GEMINI_API_KEY:
@@ -193,7 +171,7 @@ MODEL_DESCRIPTIONS = {
 # Define the system prompt for the agent
 SYSTEM_PROMPT = f"""
 You are Artemis, an AI assistant specialized in helping users navigate
-the Flare blockchain ecosystem. You can help users perform token swaps on the Flare network.
+the Flare blockchain ecosystem. You can help users perform token swaps on the Flare network and provide lending strategy recommendations.
 
 IMPORTANT: You are executing REAL transactions on the Flare blockchain.
 This means REAL tokens will be swapped.
@@ -230,150 +208,39 @@ Kinetic Tokens:
 {', '.join([f"{k}: {v}" for k, v in KINETIC_TOKENS.items()])}
 
 When a user refers to a token by name, you should use the corresponding address.
+
+LENDING STRATEGY INFORMATION:
+You can provide lending strategy recommendations based on the following pool data:
+
+LOW RISK POOLS:
+- USDT-USDC.e: 18.76% APY, $1.98m liquidity, stablecoin pair with lower volatility, 0.01% fee, address: 0x07154de9814383e75dd7dd2a2e25b072d4b27116
+- USDC.e-cUSDX: 30.34% APY, $1.29m liquidity, higher yield stablecoin option, 0.01% fee, address: 0x53676e77e352dc28eb86a3ccbc19a3ed7b63e304
+
+MEDIUM RISK POOLS:
+- WETH-flrETH: 32.12% APY, $2.57m liquidity, Ethereum-based assets, 0.05% fee, address: 0xa8697b82a5e9f108296c6299859e82472340aea7
+- sFLR-WFLR: 35.45% APY, $2.28m liquidity, native Flare assets, 0.01% fee, address: 0xc9baba3f36ccaa54675deecc327ec7eaa48cb97d
+- sFLR-JOULE: 7.66% APY, $844.14k liquidity, lower yield but potentially more stable, 0.3% fee, address: 0xa6ed1a04b9b6b0a6cf3926510546baf5bbe44e5e
+
+HIGH RISK POOLS:
+- sFLR-flrETH: 85.36% APY, $140.90k liquidity, highest yield but lower liquidity, 0.05% fee, address: 0x512d3f01d6822fbc70de55be79882a1c08499841
+- WFLR-USDC.e: 80.76% APY, $1.21m liquidity, high yield with better liquidity, 0.05% fee, address: 0x3bc1ecbcd645e525508c570a0ff04480a5614a86
+- WETH-USDC.e: 73.98% APY, $703.39k liquidity, ETH/stablecoin with high returns, 0.05% fee, address: 0x8cd69c359806af83120bc4b4e77663f1e31553e7
+- WFLR-XVN: 16.03% APY, $142.97k liquidity, high fee (1%) indicates volatility, address: 0x346ddD9858708aDaF9e1879264a5c1584fB541bE
+
+RECOMMENDED ALLOCATIONS:
+- Beginners: 70-80% low risk, 20-30% medium risk
+- Experienced: 40% low risk, 40% medium risk, 20% high risk
+- Risk-tolerant: 50-60% high risk, 40-50% medium risk
+
+KEY CONSIDERATIONS:
+- Impermanent loss risk increases with volatility
+- Lower liquidity = higher slippage
+- APY fluctuates based on trading volume
+- Consider gas fees for smaller positions
+- Diversify across different asset types
+
+When a user asks about lending or investment strategies, provide recommendations based on their risk tolerance and experience level. Explain the trade-offs between risk and reward, and suggest specific pool allocations.
 """
-
-# Define the function for Gemini to call
-swap_function = FunctionDeclaration(
-    name="swap_tokens",
-    description="Swap tokens on Flare network using Uniswap V3",
-    parameters={
-        "type": "OBJECT",
-        "properties": {
-            "token_in": {
-                "type": "STRING",
-                "description": "Name or address of the input token (e.g., 'WFLR' or '0x1D80c49BbBCd1C0911346656B529DF9E5c2F783d')"
-            },
-            "token_out": {
-                "type": "STRING",
-                "description": "Name or address of the output token (e.g., 'USDC' or '0xFbDa5F676cB37624f28265A144A48B0d6e87d3b6')"
-            },
-            "amount_in_eth": {
-                "type": "NUMBER",
-                "description": "Amount of input token in ETH units (e.g., 0.01 for 0.01 WFLR)"
-            },
-            "fee": {
-                "type": "INTEGER",
-                "description": "Fee tier (3000 = 0.3%, 500 = 0.05%, 10000 = 1%, 100 = 0.01%). If not provided, the system will automatically select the pool with the most liquidity."
-            }
-        },
-        "required": ["token_in", "token_out", "amount_in_eth"]
-    }
-)
-
-# Define function for adding liquidity
-add_liquidity_function = FunctionDeclaration(
-    name="add_liquidity",
-    description="Add liquidity to a Uniswap V3 pool on Flare network",
-    parameters={
-        "type": "OBJECT",
-        "properties": {
-            "token0": {
-                "type": "STRING",
-                "description": "Name or address of token0 (must be lower address than token1)"
-            },
-            "token1": {
-                "type": "STRING",
-                "description": "Name or address of token1 (must be higher address than token0)"
-            },
-            "amount0": {
-                "type": "NUMBER",
-                "description": "Amount of token0 in token units"
-            },
-            "amount1": {
-                "type": "NUMBER",
-                "description": "Amount of token1 in token units"
-            },
-            "fee": {
-                "type": "INTEGER",
-                "description": "Fee tier (3000 = 0.3%, 500 = 0.05%, 10000 = 1%). Default is 3000."
-            }
-        },
-        "required": ["token0", "token1", "amount0", "amount1"]
-    }
-)
-
-# Define function for removing liquidity
-remove_liquidity_function = FunctionDeclaration(
-    name="remove_liquidity",
-    description="Remove liquidity from a Uniswap V3 position on Flare network",
-    parameters={
-        "type": "OBJECT",
-        "properties": {
-            "position_id": {
-                "type": "INTEGER",
-                "description": "The ID of the position to remove liquidity from"
-            },
-            "percent_to_remove": {
-                "type": "NUMBER",
-                "description": "Percentage of liquidity to remove (1-100). Default is 100 (remove all)."
-            }
-        },
-        "required": ["position_id"]
-    }
-)
-
-# Define function for getting positions
-get_positions_function = FunctionDeclaration(
-    name="get_positions",
-    description="Get all Uniswap V3 positions for a wallet on Flare network",
-    parameters={
-        "type": "OBJECT",
-        "properties": {
-            "wallet_address": {
-                "type": "STRING",
-                "description": "The wallet address to get positions for. If not provided, uses the connected wallet."
-            }
-        },
-        "required": []
-    }
-)
-
-# Define function for getting token balances
-get_token_balances_function = FunctionDeclaration(
-    name="get_token_balances",
-    description="Get token balances for a wallet on Flare network",
-    parameters={
-        "type": "OBJECT",
-        "properties": {
-            "wallet_address": {
-                "type": "STRING",
-                "description": "The wallet address to get balances for. If not provided, uses the connected wallet."
-            },
-            "tokens": {
-                "type": "ARRAY",
-                "items": {
-                    "type": "STRING"
-                },
-                "description": "List of token symbols or addresses to check balances for. If not provided, returns balances for common tokens."
-            }
-        },
-        "required": []
-    }
-)
-
-# Define function for getting pool information
-get_pool_info_function = FunctionDeclaration(
-    name="get_pool_info",
-    description="Get information about a Uniswap V3 pool on Flare network",
-    parameters={
-        "type": "OBJECT",
-        "properties": {
-            "token0": {
-                "type": "STRING",
-                "description": "Name or address of token0"
-            },
-            "token1": {
-                "type": "STRING",
-                "description": "Name or address of token1"
-            },
-            "fee": {
-                "type": "INTEGER",
-                "description": "Fee tier (3000 = 0.3%, 500 = 0.05%, 10000 = 1%). Default is 3000."
-            }
-        },
-        "required": ["token0", "token1"]
-    }
-)
 
 def format_tx_hash_as_link(tx_hash, html=False):
     """
@@ -393,664 +260,294 @@ def format_tx_hash_as_link(tx_hash, html=False):
         return f"[View on Flare Explorer]({explorer_url})"
 
 def handle_function_call(function_call):
-    """
-    Handle function calls from Gemini
+    """Handle function calls from Gemini"""
+    function_name = function_call.name
+    function_args = function_call.args
     
-    Args:
-        function_call: The function call object from Gemini
-        
-    Returns:
-        dict: Result of the function call
-    """
-    if function_call.name == "swap_tokens":
-        # Parse arguments
-        args = function_call.args
-        token_in = args.get("token_in")
-        token_out = args.get("token_out")
-        amount_in_eth = args.get("amount_in_eth")
-        fee = args.get("fee")  # This can be None, which will trigger automatic fee selection
-        
-        # Store original token names/addresses for display
-        original_token_in = token_in
-        original_token_out = token_out
-        
-        # Resolve token names to addresses if needed
-        token_in_symbol = None
-        token_out_symbol = None
-        
-        # Check if token_in is a name rather than an address
-        if token_in and not token_in.startswith('0x'):
-            token_in_symbol = token_in  # Store the symbol
-            # Try to find in FLARE_TOKENS first
-            if token_in in FLARE_TOKENS:
-                token_in = FLARE_TOKENS[token_in]
-            # Then try KINETIC_TOKENS
-            elif token_in in KINETIC_TOKENS:
-                token_in = KINETIC_TOKENS[token_in]
-            else:
-                return {
-                    "success": False,
-                    "message": f"Could not resolve token name '{token_in}' to an address",
-                    "token_in": token_in,
-                    "token_out": token_out
-                }
+    if function_name == "swap_tokens":
+        return handle_swap(function_args)
+    elif function_name == "add_liquidity":
+        return handle_add_liquidity(function_args)
+    elif function_name == "remove_liquidity":
+        return handle_remove_liquidity(function_args)
+    elif function_name == "get_positions":
+        return handle_get_positions(function_args)
+    elif function_name == "get_token_balances":
+        return handle_get_token_balances(function_args)
+    elif function_name == "get_pool_info":
+        return handle_get_pool_info(function_args)
+    elif function_name == "recommend_lending_strategy":
+        return handle_lending_strategy(function_args)
+    else:
+        return f"Unknown function: {function_name}"
+
+def handle_lending_strategy(args):
+    """Handle lending strategy recommendations"""
+    risk_profile = args.get("risk_profile", "").lower()
+    experience_level = args.get("experience_level", "").lower()
+    investment_amount = args.get("investment_amount", "")
+    
+    # Load pool data from JSON file
+    try:
+        with open("flare-bot/pool_data.json", "r") as f:
+            pool_data = json.load(f)
+    except Exception as e:
+        return f"Error loading pool data: {str(e)}"
+    
+    # Filter pools based on risk profile
+    if risk_profile == "low":
+        recommended_pools = [pool for pool in pool_data if pool["risk_level"] in ["low"]]
+        allocation = "70-80% in low-risk pools, 20-30% in medium-risk pools"
+        strategy_type = "Conservative strategy"
+    elif risk_profile == "medium":
+        recommended_pools = [pool for pool in pool_data if pool["risk_level"] in ["medium", "low-medium"]]
+        allocation = "40% in low-risk, 40% in medium-risk, 20% in high-risk pools"
+        strategy_type = "Balanced strategy"
+    elif risk_profile == "high":
+        recommended_pools = [pool for pool in pool_data if pool["risk_level"] in ["high", "medium-high"]]
+        allocation = "50-60% in high-risk pools, 40-50% in medium-risk pools"
+        strategy_type = "Aggressive strategy"
+    else:
+        return "Please specify a valid risk profile: low, medium, or high."
+    
+    # Sort pools by APY (descending)
+    recommended_pools = sorted(recommended_pools, key=lambda x: float(x["apy"].strip("+%")), reverse=True)
+    
+    # Build response
+    response = f"## {strategy_type} for {risk_profile.capitalize()} Risk Profile\n\n"
+    
+    if experience_level:
+        if experience_level == "beginner":
+            response += "As a beginner, focus on more stable pools with lower risk of impermanent loss.\n\n"
+        elif experience_level == "intermediate":
+            response += "With some experience, you can balance between stable returns and higher yield opportunities.\n\n"
+        elif experience_level == "experienced":
+            response += "As an experienced DeFi user, you can optimize for higher yields while managing risks.\n\n"
+    
+    response += f"**Recommended Allocation:** {allocation}\n\n"
+    
+    if investment_amount:
+        response += f"**Investment Amount:** {investment_amount}\n\n"
+    
+    response += "**Top Recommended Pools:**\n\n"
+    
+    for pool in recommended_pools[:3]:
+        response += f"- **{pool['pool']}**\n"
+        response += f"  - APY: {pool['apy']}\n"
+        response += f"  - Liquidity: {pool['liquidity']}\n"
+        response += f"  - Fee: {pool['fee']}\n"
+        response += f"  - Address: {pool['address']}\n\n"
+    
+    response += "**Key Considerations:**\n"
+    response += "- Higher APY typically comes with higher risk\n"
+    response += "- Consider impermanent loss risk for volatile pairs\n"
+    response += "- Pools with lower liquidity may have higher slippage\n"
+    response += "- Diversify across different asset types for better risk management\n"
+    
+    return response
+
+def handle_swap(args):
+    # Parse arguments
+    token_in = args.get("token_in")
+    token_out = args.get("token_out")
+    amount_in_eth = args.get("amount_in_eth")
+    fee = args.get("fee")  # This can be None, which will trigger automatic fee selection
+    
+    # Store original token names/addresses for display
+    original_token_in = token_in
+    original_token_out = token_out
+    
+    # Resolve token names to addresses if needed
+    token_in_symbol = None
+    token_out_symbol = None
+    
+    # Check if token_in is a name rather than an address
+    if token_in and not token_in.startswith('0x'):
+        token_in_symbol = token_in  # Store the symbol
+        # Try to find in FLARE_TOKENS first
+        if token_in in FLARE_TOKENS:
+            token_in = FLARE_TOKENS[token_in]
+        # Then try KINETIC_TOKENS
+        elif token_in in KINETIC_TOKENS:
+            token_in = KINETIC_TOKENS[token_in]
         else:
-            # Find token symbol by address
-            for name, address in {**FLARE_TOKENS, **KINETIC_TOKENS}.items():
-                if address.lower() == token_in.lower():
-                    token_in_symbol = name
-                    break
-        
-        # Check if token_out is a name rather than an address
-        if token_out and not token_out.startswith('0x'):
-            token_out_symbol = token_out  # Store the symbol
-            # Try to find in FLARE_TOKENS first
-            if token_out in FLARE_TOKENS:
-                token_out = FLARE_TOKENS[token_out]
-            # Then try KINETIC_TOKENS
-            elif token_out in KINETIC_TOKENS:
-                token_out = KINETIC_TOKENS[token_out]
-            else:
-                return {
-                    "success": False,
-                    "message": f"Could not resolve token name '{token_out}' to an address",
-                    "token_in": token_in_symbol if token_in_symbol else token_in,
-                    "token_out": token_out
-                }
-        else:
-            # Find token symbol by address
-            for name, address in {**FLARE_TOKENS, **KINETIC_TOKENS}.items():
-                if address.lower() == token_out.lower():
-                    token_out_symbol = name
-                    break
-        
-        # Display names for logging
-        token_in_display = token_in_symbol if token_in_symbol else token_in
-        token_out_display = token_out_symbol if token_out_symbol else token_out
-        
-        # Call the swap function
-        try:
-            log_message = f"🔧 FUNCTION CALL: swap_tokens\n"
-            log_message += f"Parameters:\n"
-            log_message += f"  - token_in: {token_in_display} ({token_in})\n"
-            log_message += f"  - token_out: {token_out_display} ({token_out})\n"
-            log_message += f"  - amount_in_eth: {amount_in_eth}\n"
-            
-            if fee is not None:
-                log_message += f"  - fee: {fee} ({fee/10000}%)\n"
-            else:
-                log_message += f"  - fee: Auto-select (will find pool with most liquidity)\n"
-            
-            log_message += f"\n🚀 Executing swap on blockchain: {amount_in_eth} {token_in_display} to {token_out_display}\n"
-            
-            # Add this log message to the session state
-            if "tool_logs" not in st.session_state:
-                st.session_state.tool_logs = []
-            st.session_state.tool_logs.append(log_message)
-            
-            # Create a placeholder for real-time stdout display
-            if "realtime_output_container" in st.session_state:
-                # Clear any previous content
-                st.session_state.realtime_output_container.empty()
-                
-                # Display initial message in the real-time output container
-                initial_message = f"Starting swap: {amount_in_eth} {token_in_display} → {token_out_display}\n"
-                if fee is not None:
-                    initial_message += f"Using fee tier: {fee/10000}%\n"
-                else:
-                    initial_message += f"Auto-selecting fee tier based on liquidity\n"
-                
-                initial_placeholder = st.session_state.realtime_output_container.empty()
-                initial_placeholder.markdown(f"```\n{initial_message}\n```")
-                
-                # Create a new placeholder for function output
-                stdout_placeholder = st.session_state.realtime_output_container.empty()
-                
-                # Set up stdout redirection
-                original_stdout = sys.stdout
-                stdout_redirector = StreamlitStdoutRedirector(stdout_placeholder)
-                sys.stdout = stdout_redirector
-                
-                try:
-                    # Execute the swap with redirected stdout
-                    result = swap_tokens(token_in, token_out, amount_in_eth, fee)
-                    
-                    # Capture the final stdout content
-                    stdout_content = stdout_redirector.get_value()
-                    
-                    # Add the stdout content to the logs (but don't display in UI)
-                    if stdout_content:
-                        st.session_state.tool_logs.append(stdout_content)
-                finally:
-                    # Restore original stdout
-                    sys.stdout = original_stdout
-            else:
-                # Fallback if realtime_output_container is not available
-                result = swap_tokens(token_in, token_out, amount_in_eth, fee)
-            
-            if result:
-                tx_hash = result.get("transactionHash", "")
-                if hasattr(tx_hash, "hex"):
-                    tx_hash = tx_hash.hex()
-                else:
-                    tx_hash = str(tx_hash)
-                
-                success_message = {
-                    "success": True,
-                    "message": f"Successfully swapped {amount_in_eth} {token_in_display} for {token_out_display}",
-                    "transaction_hash": tx_hash,
-                    "explorer_url": format_tx_hash_as_link(tx_hash),
-                    "token_in": token_in_display,
-                    "token_out": token_out_display
-                }
-                
-                # Add the result to the logs
-                result_log = f"✅ Swap successful!\n"
-                result_log += f"Transaction hash: {format_tx_hash_as_link(tx_hash)}\n"
-                st.session_state.tool_logs.append(result_log)
-                
-                # Display success message in the real-time output container if available
-                if "realtime_output_container" in st.session_state:
-                    success_placeholder = st.session_state.realtime_output_container.empty()
-                    success_placeholder.markdown(f"""```
-✅ Swap successful!
-```
-**Transaction Hash**: {format_tx_hash_as_link(tx_hash)}
-""", unsafe_allow_html=True)
-                
-                return success_message
-            else:
-                failure_message = {
-                    "success": False,
-                    "message": f"Swap failed. Check logs for detailed error messages.",
-                    "token_in": token_in_display,
-                    "token_out": token_out_display
-                }
-                
-                # Add the failure to the logs
-                failure_log = f"❌ Swap failed! No transaction hash returned.\n"
-                st.session_state.tool_logs.append(failure_log)
-                
-                # Display failure message in the real-time output container if available
-                if "realtime_output_container" in st.session_state:
-                    failure_placeholder = st.session_state.realtime_output_container.empty()
-                    failure_placeholder.markdown(f"""```
-❌ Swap failed! No transaction hash returned.
-```""")
-                
-                return failure_message
-        except Exception as e:
-            # Restore original stdout if exception occurs
-            if 'original_stdout' in locals():
-                sys.stdout = original_stdout
-                
-            error_message = {
+            return {
                 "success": False,
-                "message": f"Error executing swap: {str(e)}",
+                "message": f"Could not resolve token name '{token_in}' to an address",
+                "token_in": token_in,
+                "token_out": token_out
+            }
+    else:
+        # Find token symbol by address
+        for name, address in {**FLARE_TOKENS, **KINETIC_TOKENS}.items():
+            if address.lower() == token_in.lower():
+                token_in_symbol = name
+                break
+    
+    # Check if token_out is a name rather than an address
+    if token_out and not token_out.startswith('0x'):
+        token_out_symbol = token_out  # Store the symbol
+        # Try to find in FLARE_TOKENS first
+        if token_out in FLARE_TOKENS:
+            token_out = FLARE_TOKENS[token_out]
+        # Then try KINETIC_TOKENS
+        elif token_out in KINETIC_TOKENS:
+            token_out = KINETIC_TOKENS[token_out]
+        else:
+            return {
+                "success": False,
+                "message": f"Could not resolve token name '{token_out}' to an address",
+                "token_in": token_in_symbol if token_in_symbol else token_in,
+                "token_out": token_out
+            }
+    else:
+        # Find token symbol by address
+        for name, address in {**FLARE_TOKENS, **KINETIC_TOKENS}.items():
+            if address.lower() == token_out.lower():
+                token_out_symbol = name
+                break
+    
+    # Display names for logging
+    token_in_display = token_in_symbol if token_in_symbol else token_in
+    token_out_display = token_out_symbol if token_out_symbol else token_out
+    
+    # Call the swap function
+    try:
+        log_message = f"🔧 FUNCTION CALL: swap_tokens\n"
+        log_message += f"Parameters:\n"
+        log_message += f"  - token_in: {token_in_display} ({token_in})\n"
+        log_message += f"  - token_out: {token_out_display} ({token_out})\n"
+        log_message += f"  - amount_in_eth: {amount_in_eth}\n"
+        
+        if fee is not None:
+            log_message += f"  - fee: {fee} ({fee/10000}%)\n"
+        else:
+            log_message += f"  - fee: Auto-select (will find pool with most liquidity)\n"
+        
+        log_message += f"\n🚀 Executing swap on blockchain: {amount_in_eth} {token_in_display} to {token_out_display}\n"
+        
+        # Add this log message to the session state
+        if "tool_logs" not in st.session_state:
+            st.session_state.tool_logs = []
+        st.session_state.tool_logs.append(log_message)
+        
+        # Create a placeholder for real-time stdout display
+        if "realtime_output_container" in st.session_state:
+            # Clear any previous content
+            st.session_state.realtime_output_container.empty()
+            
+            # Display initial message in the real-time output container
+            initial_message = f"Starting swap: {amount_in_eth} {token_in_display} → {token_out_display}\n"
+            if fee is not None:
+                initial_message += f"Using fee tier: {fee/10000}%\n"
+            else:
+                initial_message += f"Auto-selecting fee tier based on liquidity\n"
+            
+            initial_placeholder = st.session_state.realtime_output_container.empty()
+            initial_placeholder.markdown(f"```\n{initial_message}\n```")
+            
+            # Create a new placeholder for function output
+            stdout_placeholder = st.session_state.realtime_output_container.empty()
+            
+            # Set up stdout redirection
+            original_stdout = sys.stdout
+            stdout_redirector = StreamlitStdoutRedirector(stdout_placeholder)
+            sys.stdout = stdout_redirector
+            
+            try:
+                # Execute the swap with redirected stdout
+                result = swap_tokens(token_in, token_out, amount_in_eth, fee)
+                
+                # Capture the final stdout content
+                stdout_content = stdout_redirector.get_value()
+                
+                # Add the stdout content to the logs (but don't display in UI)
+                if stdout_content:
+                    st.session_state.tool_logs.append(stdout_content)
+            finally:
+                # Restore original stdout
+                sys.stdout = original_stdout
+        else:
+            # Fallback if realtime_output_container is not available
+            result = swap_tokens(token_in, token_out, amount_in_eth, fee)
+        
+        if result:
+            tx_hash = result.get("transactionHash", "")
+            if hasattr(tx_hash, "hex"):
+                tx_hash = tx_hash.hex()
+            else:
+                tx_hash = str(tx_hash)
+            
+            success_message = {
+                "success": True,
+                "message": f"Successfully swapped {amount_in_eth} {token_in_display} for {token_out_display}",
+                "transaction_hash": tx_hash,
+                "explorer_url": format_tx_hash_as_link(tx_hash),
                 "token_in": token_in_display,
                 "token_out": token_out_display
             }
             
-            # Add the error to the logs
-            error_log = f"❌ Error executing swap:\n{str(e)}\n"
-            error_log += traceback.format_exc()
-            st.session_state.tool_logs.append(error_log)
+            # Add the result to the logs
+            result_log = f"✅ Swap successful!\n"
+            result_log += f"Transaction hash: {format_tx_hash_as_link(tx_hash)}\n"
+            st.session_state.tool_logs.append(result_log)
             
-            # Display error message in the real-time output container if available
+            # Display success message in the real-time output container if available
             if "realtime_output_container" in st.session_state:
-                error_placeholder = st.session_state.realtime_output_container.empty()
-                error_placeholder.markdown(f"""```
-❌ Error executing swap:
-{str(e)}
+                success_placeholder = st.session_state.realtime_output_container.empty()
+                success_placeholder.markdown(f"""```
+✅ Swap successful!
+```
+**Transaction Hash**: {format_tx_hash_as_link(tx_hash)}
+""", unsafe_allow_html=True)
+            
+            return success_message
+        else:
+            failure_message = {
+                "success": False,
+                "message": f"Swap failed. Check logs for detailed error messages.",
+                "token_in": token_in_display,
+                "token_out": token_out_display
+            }
+            
+            # Add the failure to the logs
+            failure_log = f"❌ Swap failed! No transaction hash returned.\n"
+            st.session_state.tool_logs.append(failure_log)
+            
+            # Display failure message in the real-time output container if available
+            if "realtime_output_container" in st.session_state:
+                failure_placeholder = st.session_state.realtime_output_container.empty()
+                failure_placeholder.markdown(f"""```
+❌ Swap failed! No transaction hash returned.
 ```""")
             
-            return error_message
-    elif function_call.name == "add_liquidity":
-        # Parse arguments
-        args = function_call.args
-        token0 = args.get("token0")
-        token1 = args.get("token1")
-        amount0 = args.get("amount0")
-        amount1 = args.get("amount1")
-        fee = args.get("fee", 3000)  # Default to 0.3% fee tier
-        
-        # Store original token names/addresses for display
-        original_token0 = token0
-        original_token1 = token1
-        
-        # Resolve token names to addresses if needed
-        token0_symbol = None
-        token1_symbol = None
-        
-        # Check if token0 is a name rather than an address
-        if token0 and not token0.startswith('0x'):
-            token0_symbol = token0  # Store the symbol
-            # Try to find in FLARE_TOKENS first
-            if token0 in FLARE_TOKENS:
-                token0 = FLARE_TOKENS[token0]
-            # Then try KINETIC_TOKENS
-            elif token0 in KINETIC_TOKENS:
-                token0 = KINETIC_TOKENS[token0]
-            else:
-                return {
-                    "success": False,
-                    "message": f"Could not resolve token name '{token0}' to an address",
-                    "token0": token0,
-                    "token1": token1
-                }
-        else:
-            # Find token symbol by address
-            for name, address in {**FLARE_TOKENS, **KINETIC_TOKENS}.items():
-                if address.lower() == token0.lower():
-                    token0_symbol = name
-                    break
-        
-        # Check if token1 is a name rather than an address
-        if token1 and not token1.startswith('0x'):
-            token1_symbol = token1  # Store the symbol
-            # Try to find in FLARE_TOKENS first
-            if token1 in FLARE_TOKENS:
-                token1 = FLARE_TOKENS[token1]
-            # Then try KINETIC_TOKENS
-            elif token1 in KINETIC_TOKENS:
-                token1 = KINETIC_TOKENS[token1]
-            else:
-                return {
-                    "success": False,
-                    "message": f"Could not resolve token name '{token1}' to an address",
-                    "token0": token0,
-                    "token1": token1
-                }
-        else:
-            # Find token symbol by address
-            for name, address in {**FLARE_TOKENS, **KINETIC_TOKENS}.items():
-                if address.lower() == token1.lower():
-                    token1_symbol = name
-                    break
-        
-        # Log the function call
-        log_message = f"🔄 Adding liquidity: {amount0} {token0_symbol or token0} and {amount1} {token1_symbol or token1} with fee tier {fee/10000:.2f}%\n"
-        st.session_state.tool_logs.append(log_message)
-        
-        try:
-            # Import the add_liquidity function
-            from flare_uniswap_add_liquidity import add_liquidity
+            return failure_message
+    except Exception as e:
+        # Restore original stdout if exception occurs
+        if 'original_stdout' in locals():
+            sys.stdout = original_stdout
             
-            # Redirect stdout to capture output
-            stdout_redirector = StreamlitStdoutRedirector(st.empty())
-            sys.stdout = stdout_redirector
-            
-            # Call the add_liquidity function
-            result = add_liquidity(token0, token1, amount0, amount1, fee)
-            
-            # Reset stdout
-            sys.stdout = stdout_redirector.original_stdout
-            
-            # Get the output
-            output = stdout_redirector.get_value()
-            
-            # Check if the result contains a transaction hash
-            if result and "transaction_hash" in result:
-                tx_hash = result["transaction_hash"]
-                return {
-                    "success": True,
-                    "message": f"Successfully added liquidity to the {token0_symbol or token0}/{token1_symbol or token1} pool",
-                    "transaction_hash": tx_hash,
-                    "output": output
-                }
-            else:
-                return {
-                    "success": False,
-                    "message": "Failed to add liquidity",
-                    "output": output
-                }
-        except Exception as e:
-            # Reset stdout in case of error
-            if 'stdout_redirector' in locals():
-                sys.stdout = stdout_redirector.original_stdout
-            
-            error_message = f"Error adding liquidity: {str(e)}"
-            st.session_state.tool_logs.append(f"❌ {error_message}\n")
-            
-            return {
-                "success": False,
-                "message": error_message,
-                "error": str(e),
-                "traceback": traceback.format_exc()
-            }
-    elif function_call.name == "remove_liquidity":
-        # Parse arguments
-        args = function_call.args
-        position_id = args.get("position_id")
-        percent_to_remove = args.get("percent_to_remove", 100)  # Default to removing all liquidity
-        
-        # Log the function call
-        log_message = f"🔄 Removing {percent_to_remove}% liquidity from position {position_id}\n"
-        st.session_state.tool_logs.append(log_message)
-        
-        try:
-            # Import the remove_liquidity function
-            from flare_uniswap_remove_liquidity import remove_liquidity
-            
-            # Redirect stdout to capture output
-            stdout_redirector = StreamlitStdoutRedirector(st.empty())
-            sys.stdout = stdout_redirector
-            
-            # Call the remove_liquidity function
-            result = remove_liquidity(position_id, percent_to_remove)
-            
-            # Reset stdout
-            sys.stdout = stdout_redirector.original_stdout
-            
-            # Get the output
-            output = stdout_redirector.get_value()
-            
-            # Check if the result contains a transaction hash
-            if result and "transaction_hash" in result:
-                tx_hash = result["transaction_hash"]
-                return {
-                    "success": True,
-                    "message": f"Successfully removed {percent_to_remove}% liquidity from position {position_id}",
-                    "transaction_hash": tx_hash,
-                    "output": output
-                }
-            else:
-                return {
-                    "success": False,
-                    "message": "Failed to remove liquidity",
-                    "output": output
-                }
-        except Exception as e:
-            # Reset stdout in case of error
-            if 'stdout_redirector' in locals():
-                sys.stdout = stdout_redirector.original_stdout
-            
-            error_message = f"Error removing liquidity: {str(e)}"
-            st.session_state.tool_logs.append(f"❌ {error_message}\n")
-            
-            return {
-                "success": False,
-                "message": error_message,
-                "error": str(e),
-                "traceback": traceback.format_exc()
-            }
-    elif function_call.name == "get_positions":
-        # Parse arguments
-        args = function_call.args
-        wallet_address = args.get("wallet_address")  # This can be None, which will use the connected wallet
-        
-        # Log the function call
-        log_message = f"🔍 Getting positions for wallet {wallet_address or 'connected wallet'}\n"
-        st.session_state.tool_logs.append(log_message)
-        
-        try:
-            # Import the necessary functions
-            from flare_uniswap_sdk_test import initialize_uniswap, test_get_positions
-            
-            # Redirect stdout to capture output
-            stdout_redirector = StreamlitStdoutRedirector(st.empty())
-            sys.stdout = stdout_redirector
-            
-            # Initialize Uniswap
-            uniswap = initialize_uniswap()
-            
-            # Get positions
-            positions = test_get_positions(uniswap, wallet_address)
-            
-            # Restore stdout
-            sys.stdout = sys.__stdout__
-            
-            # Return the positions
-            return {
-                "success": True,
-                "positions": positions,
-                "output": stdout_redirector.get_value()
-            }
-        except Exception as e:
-            # Restore stdout
-            sys.stdout = sys.__stdout__
-            
-            error_message = f"❌ Error getting positions: {str(e)}"
-            st.session_state.tool_logs.append(error_message)
-            
-            return {
-                "success": False,
-                "message": error_message,
-                "error": str(e),
-                "traceback": traceback.format_exc()
-            }
-    elif function_call.name == "get_token_balances":
-        # Parse arguments
-        args = function_call.args
-        wallet_address = args.get("wallet_address")  # This can be None, which will use the connected wallet
-        tokens = args.get("tokens", [])  # This can be None or empty, which will use common tokens
-        
-        # Log the function call
-        log_message = f"💰 Getting token balances for wallet {wallet_address or 'connected wallet'}\n"
-        st.session_state.tool_logs.append(log_message)
-        
-        try:
-            # Import the necessary functions
-            from flare_uniswap_sdk_test import initialize_uniswap
-            
-            # Redirect stdout to capture output
-            stdout_redirector = StreamlitStdoutRedirector(st.empty())
-            sys.stdout = stdout_redirector
-            
-            # Initialize Uniswap
-            uniswap = initialize_uniswap()
-            
-            # Define common tokens if none provided
-            if not tokens:
-                # Common Flare tokens
-                tokens = ["WFLR", "USDC", "USDT", "SGB", "FLR", "XRP"]
-            
-            # Get balances
-            balances = {}
-            
-            # Get native token (FLR) balance
-            if "FLR" in tokens or not tokens:
-                eth_balance = uniswap.get_eth_balance()
-                eth_balance_formatted = uniswap.w3.from_wei(eth_balance, 'ether')
-                balances["FLR"] = {
-                    "symbol": "FLR",
-                    "name": "Flare",
-                    "balance": float(eth_balance_formatted),
-                    "balance_wei": str(eth_balance),
-                    "address": "native"
-                }
-                print(f"FLR Balance: {eth_balance_formatted}")
-            
-            # Get token balances
-            for token in tokens:
-                if token == "FLR":
-                    continue  # Already handled above
-                
-                try:
-                    # Check if token is a symbol or address
-                    if token.startswith("0x"):
-                        token_address = token
-                        # Try to find token symbol by address
-                        token_symbol = None
-                        for name, addr in {**FLARE_TOKENS, **KINETIC_TOKENS}.items():
-                            if addr.lower() == token_address.lower():
-                                token_symbol = name
-                                break
-                        
-                        if not token_symbol:
-                            # Try to get symbol from contract
-                            try:
-                                erc20 = uniswap.get_token(token_address)
-                                token_symbol = erc20.symbol
-                            except:
-                                token_symbol = "UNKNOWN"
-                    else:
-                        token_symbol = token
-                        # Try to find token address by symbol
-                        if token in FLARE_TOKENS:
-                            token_address = FLARE_TOKENS[token]
-                        elif token in KINETIC_TOKENS:
-                            token_address = KINETIC_TOKENS[token]
-                        else:
-                            print(f"Token {token_symbol} not found in registry. Skipping.")
-                            continue
-                    
-                    # Get token info using get_token_balance function
-                    token_info = get_token_balance(uniswap.w3, token_address, wallet_address)
-                    
-                    # Add to balances
-                    balances[token_symbol] = token_info
-                    
-                    print(f"{token_symbol} Balance: {token_info['balance']}")
-                except Exception as e:
-                    print(f"Error getting balance for token {token}: {str(e)}")
-            
-            # Restore stdout
-            sys.stdout = sys.__stdout__
-            
-            # Return the balances
-            return {
-                "success": True,
-                "balances": balances,
-                "output": stdout_redirector.get_value()
-            }
-        except Exception as e:
-            # Restore stdout
-            sys.stdout = sys.__stdout__
-            
-            error_message = f"❌ Error getting token balances: {str(e)}"
-            st.session_state.tool_logs.append(error_message)
-            
-            return {
-                "success": False,
-                "message": error_message,
-                "error": str(e),
-                "traceback": traceback.format_exc()
-            }
-    elif function_call.name == "get_pool_info":
-        # Parse arguments
-        args = function_call.args
-        token0 = args.get("token0")
-        token1 = args.get("token1")
-        fee = args.get("fee", 3000)  # Default to 0.3% fee tier
-        
-        # Store original token names/addresses for display
-        original_token0 = token0
-        original_token1 = token1
-        
-        # Resolve token names to addresses if needed
-        token0_symbol = None
-        token1_symbol = None
-        
-        # Check if token0 is a name rather than an address
-        if token0 and not token0.startswith('0x'):
-            token0_symbol = token0  # Store the symbol
-            # Try to find in FLARE_TOKENS first
-            if token0 in FLARE_TOKENS:
-                token0 = FLARE_TOKENS[token0]
-            # Then try KINETIC_TOKENS
-            elif token0 in KINETIC_TOKENS:
-                token0 = KINETIC_TOKENS[token0]
-            else:
-                return {
-                    "success": False,
-                    "message": f"Could not resolve token name '{token0}' to an address",
-                    "token0": token0,
-                    "token1": token1
-                }
-        else:
-            # Find token symbol by address
-            for name, address in {**FLARE_TOKENS, **KINETIC_TOKENS}.items():
-                if address.lower() == token0.lower():
-                    token0_symbol = name
-                    break
-        
-        # Check if token1 is a name rather than an address
-        if token1 and not token1.startswith('0x'):
-            token1_symbol = token1  # Store the symbol
-            # Try to find in FLARE_TOKENS first
-            if token1 in FLARE_TOKENS:
-                token1 = FLARE_TOKENS[token1]
-            # Then try KINETIC_TOKENS
-            elif token1 in KINETIC_TOKENS:
-                token1 = KINETIC_TOKENS[token1]
-            else:
-                return {
-                    "success": False,
-                    "message": f"Could not resolve token name '{token1}' to an address",
-                    "token0": token0,
-                    "token1": token1
-                }
-        else:
-            # Find token symbol by address
-            for name, address in {**FLARE_TOKENS, **KINETIC_TOKENS}.items():
-                if address.lower() == token1.lower():
-                    token1_symbol = name
-                    break
-        
-        # Log the function call
-        log_message = f"🔍 Getting pool info for {token0_symbol or token0}/{token1_symbol or token1} with fee tier {fee/10000:.2f}%\n"
-        st.session_state.tool_logs.append(log_message)
-        
-        try:
-            # Import the necessary functions
-            from flare_uniswap_sdk_test import initialize_uniswap, test_get_pool_info
-            
-            # Redirect stdout to capture output
-            stdout_redirector = StreamlitStdoutRedirector(st.empty())
-            sys.stdout = stdout_redirector
-            
-            # Initialize Uniswap
-            uniswap, web3, wallet_address = initialize_uniswap()
-            
-            # Get pool info
-            pool = test_get_pool_info(uniswap, token0, token1, fee)
-            
-            # Reset stdout
-            sys.stdout = stdout_redirector.original_stdout
-            
-            # Get the output
-            output = stdout_redirector.get_value()
-            
-            if pool:
-                return {
-                    "success": True,
-                    "message": f"Successfully retrieved pool info for {token0_symbol or token0}/{token1_symbol or token1}",
-                    "pool_address": pool.address,
-                    "output": output
-                }
-            else:
-                return {
-                    "success": False,
-                    "message": f"Pool not found for {token0_symbol or token0}/{token1_symbol or token1} with fee tier {fee/10000:.2f}%",
-                    "output": output
-                }
-        except Exception as e:
-            # Reset stdout in case of error
-            if 'stdout_redirector' in locals():
-                sys.stdout = stdout_redirector.original_stdout
-            
-            error_message = f"Error getting pool info: {str(e)}"
-            st.session_state.tool_logs.append(f"❌ {error_message}\n")
-            
-            return {
-                "success": False,
-                "message": error_message,
-                "error": str(e),
-                "traceback": traceback.format_exc()
-            }
-    else:
-        # Unknown function call
-        unknown_function_message = {
+        error_message = {
             "success": False,
-            "message": f"Unknown function call: {function_call.name}"
+            "message": f"Error executing swap: {str(e)}",
+            "token_in": token_in_display,
+            "token_out": token_out_display
         }
         
         # Add the error to the logs
-        unknown_log = f"❓ Unknown function call detected: {function_call.name}\n"
-        st.session_state.tool_logs.append(unknown_log)
+        error_log = f"❌ Error executing swap:\n{str(e)}\n"
+        error_log += traceback.format_exc()
+        st.session_state.tool_logs.append(error_log)
         
-        return unknown_function_message
+        # Display error message in the real-time output container if available
+        if "realtime_output_container" in st.session_state:
+            error_placeholder = st.session_state.realtime_output_container.empty()
+            error_placeholder.markdown(f"""```
+❌ Error executing swap:
+{str(e)}
+```""")
+        
+        return error_message
 
 def generate_response(prompt, model_name="models/gemini-2.0-flash"):
     """Generate a response from Gemini with function calling capabilities"""
@@ -1059,21 +556,14 @@ def generate_response(prompt, model_name="models/gemini-2.0-flash"):
         return
     
     try:
-        # Create tools with the function declarations
-        swap_tool = Tool(function_declarations=[swap_function])
-        liquidity_tools = Tool(function_declarations=[
-            add_liquidity_function,
-            remove_liquidity_function,
-            get_positions_function,
-            get_token_balances_function,
-            get_pool_info_function
-        ])
+        # Get tools from the tools module
+        tools = get_all_tools()
         
         # Initialize the Gemini model with function calling capability
         model = genai.GenerativeModel(
             model_name=model_name,
             system_instruction=SYSTEM_PROMPT,
-            tools=[swap_tool, liquidity_tools]
+            tools=tools
         )
         
         # If we have chat history, convert it to the format Gemini expects

@@ -1,0 +1,101 @@
+[
+  {
+    "id": 1,
+    "pool": "WETH-flrETH",
+    "fee": "0.05%",
+    "liquidity": "$2.57m",
+    "volume_24h": "$12.72k",
+    "volume_7d": "$141.47k",
+    "apy": "+32.12%",
+    "address": "0xa8697b82a5e9f108296c6299859e82472340aea7",
+    "risk_level": "medium"
+  },
+  {
+    "id": 2,
+    "pool": "sFLR-WFLR",
+    "fee": "0.01%",
+    "liquidity": "$2.28m",
+    "volume_24h": "$172.38k",
+    "volume_7d": "$975.28k",
+    "apy": "+35.45%",
+    "address": "0xc9baba3f36ccaa54675deecc327ec7eaa48cb97d",
+    "risk_level": "medium"
+  },
+  {
+    "id": 3,
+    "pool": "USDT-USDC.e",
+    "fee": "0.01%",
+    "liquidity": "$1.98m",
+    "volume_24h": "$141.46k",
+    "volume_7d": "$894.47k",
+    "apy": "+18.76%",
+    "address": "0x07154de9814383e75dd7dd2a2e25b072d4b27116",
+    "risk_level": "low"
+  },
+  {
+    "id": 4,
+    "pool": "USDC.e-cUSDX",
+    "fee": "0.01%",
+    "liquidity": "$1.29m",
+    "volume_24h": "$16.49k",
+    "volume_7d": "$86.91k",
+    "apy": "+30.34%",
+    "address": "0x53676e77e352dc28eb86a3ccbc19a3ed7b63e304",
+    "risk_level": "low"
+  },
+  {
+    "id": 5,
+    "pool": "WFLR-USDC.e",
+    "fee": "0.05%",
+    "liquidity": "$1.21m",
+    "volume_24h": "$961.06k",
+    "volume_7d": "$8.77m",
+    "apy": "+80.76%",
+    "address": "0x3bc1ecbcd645e525508c570a0ff04480a5614a86",
+    "risk_level": "medium-high"
+  },
+  {
+    "id": 6,
+    "pool": "WETH-USDC.e",
+    "fee": "0.05%",
+    "liquidity": "$703.39k",
+    "volume_24h": "$77.52k",
+    "volume_7d": "$1.27m",
+    "apy": "+73.98%",
+    "address": "0x8cd69c359806af83120bc4b4e77663f1e31553e7",
+    "risk_level": "medium-high"
+  },
+  {
+    "id": 7,
+    "pool": "sFLR-JOULE",
+    "fee": "0.3%",
+    "liquidity": "$844.14k",
+    "volume_24h": "$28.82k",
+    "volume_7d": "$122.78k",
+    "apy": "+7.66%",
+    "address": "0xa6ed1a04b9b6b0a6cf3926510546baf5bbe44e5e",
+    "risk_level": "low-medium"
+  },
+  {
+    "id": 8,
+    "pool": "WFLR-XVN",
+    "fee": "1%",
+    "liquidity": "$142.97k",
+    "volume_24h": "$45.71",
+    "volume_7d": "$539.17",
+    "apy": "+16.03%",
+    "address": "0x346ddD9858708aDaF9e1879264a5c1584fB541bE",
+    "risk_level": "high"
+  },
+  {
+    "id": 9,
+    "pool": "sFLR-flrETH",
+    "fee": "0.05%",
+    "liquidity": "$140.90k",
+    "volume_24h": "$39.83k",
+    "volume_7d": "$404.49k",
+    "apy": "+85.36%",
+    "address": "0x512d3f01d6822fbc70de55be79882a1c08499841",
+    "risk_level": "high"
+  }
+] 

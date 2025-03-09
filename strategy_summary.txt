@@ -1,0 +1,28 @@
+FLARE NETWORK LENDING STRATEGIES SUMMARY
+
+LOW RISK:
+- USDT-USDC.e: 18.76% APY, $1.98m liquidity, stablecoin pair with lower volatility
+- USDC.e-cUSDX: 30.34% APY, $1.29m liquidity, higher yield stablecoin option
+
+MEDIUM RISK:
+- WETH-flrETH: 32.12% APY, $2.57m liquidity, Ethereum-based assets
+- sFLR-WFLR: 35.45% APY, $2.28m liquidity, native Flare assets
+- sFLR-JOULE: 7.66% APY, $844.14k liquidity, lower yield but potentially more stable
+
+HIGH RISK:
+- sFLR-flrETH: 85.36% APY, $140.90k liquidity, highest yield but lower liquidity
+- WFLR-USDC.e: 80.76% APY, $1.21m liquidity, high yield with better liquidity
+- WETH-USDC.e: 73.98% APY, $703.39k liquidity, ETH/stablecoin with high returns
+- WFLR-XVN: 16.03% APY, $142.97k liquidity, high fee (1%) indicates volatility
+
+RECOMMENDED ALLOCATIONS:
+- Beginners: 70-80% low risk, 20-30% medium risk
+- Experienced: 40% low risk, 40% medium risk, 20% high risk
+- Risk-tolerant: 50-60% high risk, 40-50% medium risk
+
+KEY CONSIDERATIONS:
+- Impermanent loss risk increases with volatility
+- Lower liquidity = higher slippage
+- APY fluctuates based on trading volume
+- Consider gas fees for smaller positions
+- Diversify across different asset types 
