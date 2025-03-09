@@ -814,13 +814,13 @@ with st.sidebar:
                     else:
                         st.warning("⚠️ No nonces found in the attestation token. This is unusual but the token is still valid for basic attestation purposes.")
                     
-                    # Display full claims in an expander
-                    with st.expander("View Full Claims"):
-                        st.json(claims)
+                    # Instead of using nested expanders, use collapsible sections with st.write
+                    st.write("**Full Claims:**")
+                    st.json(claims)
                     
-                    # Display token in an expander
-                    with st.expander("View Raw Token"):
-                        st.code(token)
+                    # Display token without using an expander
+                    st.write("**Raw Token:**")
+                    st.code(token)
                         
                     # Add Debug Token button
                     if st.button("Debug Token Structure"):
