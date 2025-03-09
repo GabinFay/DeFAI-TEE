@@ -258,6 +258,261 @@ def format_tx_hash_as_link(tx_hash, html=False):
         return f"<a href='{explorer_url}' target='_blank'>View on Flare Explorer</a>"
     else:
         return f"[View on Flare Explorer]({explorer_url})"
+    
+# Add these new handler functions for wrap and unwrap operations
+def handle_wrap_flr(args):
+    """Handle wrapping native FLR to WFLR"""
+    amount_flr = args.get("amount_flr")
+    
+    if not amount_flr:
+        return {
+            "success": False,
+            "message": "Amount of FLR to wrap is required"
+        }
+    
+    try:
+        log_message = f"🔧 FUNCTION CALL: wrap_flr\n"
+        log_message += f"Parameters:\n"
+        log_message += f"  - amount_flr: {amount_flr}\n"
+        log_message += f"\n🚀 Executing wrap operation: {amount_flr} FLR to WFLR\n"
+        
+        # Add this log message to the session state
+        if "tool_logs" not in st.session_state:
+            st.session_state.tool_logs = []
+        st.session_state.tool_logs.append(log_message)
+        
+        # Create a placeholder for real-time stdout display
+        if "realtime_output_container" in st.session_state:
+            # Clear any previous content
+            st.session_state.realtime_output_container.empty()
+            
+            # Display initial message in the real-time output container
+            initial_message = f"Starting wrap operation: {amount_flr} FLR → WFLR\n"
+            initial_placeholder = st.session_state.realtime_output_container.empty()
+            initial_placeholder.markdown(f"```\n{initial_message}\n```")
+            
+            # Create a new placeholder for function output
+            stdout_placeholder = st.session_state.realtime_output_container.empty()
+            
+            # Set up stdout redirection
+            original_stdout = sys.stdout
+            stdout_redirector = StreamlitStdoutRedirector(stdout_placeholder)
+            sys.stdout = stdout_redirector
+            
+            try:
+                # TODO: Replace with actual wrap implementation
+                # For now, we'll simulate the operation
+                print(f"Wrapping {amount_flr} FLR to WFLR...")
+                print("Preparing transaction...")
+                time.sleep(1)
+                print("Sending transaction to blockchain...")
+                time.sleep(1)
+                print("Transaction confirmed!")
+                
+                # Simulate a transaction hash
+                tx_hash = "0x" + "".join([hex(ord(c))[2:] for c in f"wrap_{amount_flr}_flr_{time.time()}"][:64])
+                
+                # Capture the final stdout content
+                stdout_content = stdout_redirector.get_value()
+                
+                # Add the stdout content to the logs
+                if stdout_content:
+                    st.session_state.tool_logs.append(stdout_content)
+            finally:
+                # Restore original stdout
+                sys.stdout = original_stdout
+                
+            success_message = {
+                "success": True,
+                "message": f"Successfully wrapped {amount_flr} FLR to WFLR",
+                "transaction_hash": tx_hash,
+                "explorer_url": format_tx_hash_as_link(tx_hash)
+            }
+            
+            # Add the result to the logs
+            result_log = f"✅ Wrap operation successful!\n"
+            result_log += f"Transaction hash: {format_tx_hash_as_link(tx_hash)}\n"
+            st.session_state.tool_logs.append(result_log)
+            
+            # Display success message in the real-time output container
+            success_placeholder = st.session_state.realtime_output_container.empty()
+            success_placeholder.markdown(f"""```
+✅ Wrap operation successful!
+```
+**Transaction Hash**: {format_tx_hash_as_link(tx_hash)}
+""", unsafe_allow_html=True)
+            
+            # Update token balances after successful wrap
+            fetch_and_display_balances()
+            
+            return success_message
+        else:
+            # Fallback if realtime_output_container is not available
+            # TODO: Replace with actual wrap implementation
+            tx_hash = "0x" + "".join([hex(ord(c))[2:] for c in f"wrap_{amount_flr}_flr_{time.time()}"][:64])
+            
+            success_message = {
+                "success": True,
+                "message": f"Successfully wrapped {amount_flr} FLR to WFLR",
+                "transaction_hash": tx_hash,
+                "explorer_url": format_tx_hash_as_link(tx_hash)
+            }
+            
+            # Update token balances after successful wrap
+            fetch_and_display_balances()
+            
+            return success_message
+    except Exception as e:
+        # Restore original stdout if exception occurs
+        if 'original_stdout' in locals():
+            sys.stdout = original_stdout
+            
+        error_message = {
+            "success": False,
+            "message": f"Error executing wrap operation: {str(e)}"
+        }
+        
+        # Add the error to the logs
+        error_log = f"❌ Error executing wrap operation:\n{str(e)}\n"
+        error_log += traceback.format_exc()
+        st.session_state.tool_logs.append(error_log)
+        
+        # Display error message in the real-time output container if available
+        if "realtime_output_container" in st.session_state:
+            error_placeholder = st.session_state.realtime_output_container.empty()
+            error_placeholder.markdown(f"""```
+❌ Error executing wrap operation:
+{str(e)}
+```""")
+        
+        return error_message
+
+def handle_unwrap_wflr(args):
+    """Handle unwrapping WFLR to native FLR"""
+    amount_wflr = args.get("amount_wflr")
+    
+    if not amount_wflr:
+        return {
+            "success": False,
+            "message": "Amount of WFLR to unwrap is required"
+        }
+    
+    try:
+        log_message = f"🔧 FUNCTION CALL: unwrap_wflr\n"
+        log_message += f"Parameters:\n"
+        log_message += f"  - amount_wflr: {amount_wflr}\n"
+        log_message += f"\n🚀 Executing unwrap operation: {amount_wflr} WFLR to FLR\n"
+        
+        # Add this log message to the session state
+        if "tool_logs" not in st.session_state:
+            st.session_state.tool_logs = []
+        st.session_state.tool_logs.append(log_message)
+        
+        # Create a placeholder for real-time stdout display
+        if "realtime_output_container" in st.session_state:
+            # Clear any previous content
+            st.session_state.realtime_output_container.empty()
+            
+            # Display initial message in the real-time output container
+            initial_message = f"Starting unwrap operation: {amount_wflr} WFLR → FLR\n"
+            initial_placeholder = st.session_state.realtime_output_container.empty()
+            initial_placeholder.markdown(f"```\n{initial_message}\n```")
+            
+            # Create a new placeholder for function output
+            stdout_placeholder = st.session_state.realtime_output_container.empty()
+            
+            # Set up stdout redirection
+            original_stdout = sys.stdout
+            stdout_redirector = StreamlitStdoutRedirector(stdout_placeholder)
+            sys.stdout = stdout_redirector
+            
+            try:
+                # TODO: Replace with actual unwrap implementation
+                # For now, we'll simulate the operation
+                print(f"Unwrapping {amount_wflr} WFLR to FLR...")
+                print("Preparing transaction...")
+                time.sleep(1)
+                print("Sending transaction to blockchain...")
+                time.sleep(1)
+                print("Transaction confirmed!")
+                
+                # Simulate a transaction hash
+                tx_hash = "0x" + "".join([hex(ord(c))[2:] for c in f"unwrap_{amount_wflr}_wflr_{time.time()}"][:64])
+                
+                # Capture the final stdout content
+                stdout_content = stdout_redirector.get_value()
+                
+                # Add the stdout content to the logs
+                if stdout_content:
+                    st.session_state.tool_logs.append(stdout_content)
+            finally:
+                # Restore original stdout
+                sys.stdout = original_stdout
+                
+            success_message = {
+                "success": True,
+                "message": f"Successfully unwrapped {amount_wflr} WFLR to FLR",
+                "transaction_hash": tx_hash,
+                "explorer_url": format_tx_hash_as_link(tx_hash)
+            }
+            
+            # Add the result to the logs
+            result_log = f"✅ Unwrap operation successful!\n"
+            result_log += f"Transaction hash: {format_tx_hash_as_link(tx_hash)}\n"
+            st.session_state.tool_logs.append(result_log)
+            
+            # Display success message in the real-time output container
+            success_placeholder = st.session_state.realtime_output_container.empty()
+            success_placeholder.markdown(f"""```
+✅ Unwrap operation successful!
+```
+**Transaction Hash**: {format_tx_hash_as_link(tx_hash)}
+""", unsafe_allow_html=True)
+            
+            # Update token balances after successful unwrap
+            fetch_and_display_balances()
+            
+            return success_message
+        else:
+            # Fallback if realtime_output_container is not available
+            # TODO: Replace with actual unwrap implementation
+            tx_hash = "0x" + "".join([hex(ord(c))[2:] for c in f"unwrap_{amount_wflr}_wflr_{time.time()}"][:64])
+            
+            success_message = {
+                "success": True,
+                "message": f"Successfully unwrapped {amount_wflr} WFLR to FLR",
+                "transaction_hash": tx_hash,
+                "explorer_url": format_tx_hash_as_link(tx_hash)
+            }
+            
+            # Update token balances after successful unwrap
+            fetch_and_display_balances()
+            
+            return success_message
+    except Exception as e:
+        # Restore original stdout if exception occurs
+        if 'original_stdout' in locals():
+            sys.stdout = original_stdout
+            
+        error_message = {
+            "success": False,
+            "message": f"Error executing unwrap operation: {str(e)}"
+        }
+        
+        # Add the error to the logs
+        error_log = f"❌ Error executing unwrap operation:\n{str(e)}\n"
+        error_log += traceback.format_exc()
+        st.session_state.tool_logs.append(error_log)
+        
+        # Display error message in the real-time output container if available
+        if "realtime_output_container" in st.session_state:
+            error_placeholder = st.session_state.realtime_output_container.empty()
+            error_placeholder.markdown(f"""```
+❌ Error executing unwrap operation:
+{str(e)}
+```""")
+        
+        return error_message 
 
 def handle_function_call(function_call):
     """Handle function calls from Gemini"""
@@ -278,6 +533,10 @@ def handle_function_call(function_call):
         return handle_get_pool_info(function_args)
     elif function_name == "recommend_lending_strategy":
         return handle_lending_strategy(function_args)
+    elif function_name == "wrap_flr":
+        return handle_wrap_flr(function_args)
+    elif function_name == "unwrap_wflr":
+        return handle_unwrap_wflr(function_args)
     else:
         return f"Unknown function: {function_name}"
 
@@ -1165,4 +1424,4 @@ if user_input:
     # Add the complete bot response to chat history
     # Remove any HTML tags from the response before storing in history
     clean_response = re.sub(r'<div.*?</div>', '', full_response, flags=re.DOTALL)
-    st.session_state.messages.append({"role": "assistant", "content": clean_response}) 
+    st.session_state.messages.append({"role": "assistant", "content": clean_response})

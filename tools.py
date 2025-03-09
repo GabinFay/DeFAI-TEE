@@ -201,6 +201,38 @@ get_pool_info_function = FunctionDeclaration(
     }
 )
 
+# Define function for wrapping FLR to WFLR
+wrap_flr_function = FunctionDeclaration(
+    name="wrap_flr",
+    description="Wrap native FLR to WFLR (Wrapped Flare) on Flare network",
+    parameters={
+        "type": "OBJECT",
+        "properties": {
+            "amount_flr": {
+                "type": "STRING",
+                "description": "Amount of FLR to wrap (e.g., '1.0' for 1 FLR)"
+            }
+        },
+        "required": ["amount_flr"]
+    }
+)
+
+# Define function for unwrapping WFLR to FLR
+unwrap_wflr_function = FunctionDeclaration(
+    name="unwrap_wflr",
+    description="Unwrap WFLR (Wrapped Flare) back to native FLR on Flare network",
+    parameters={
+        "type": "OBJECT",
+        "properties": {
+            "amount_wflr": {
+                "type": "STRING",
+                "description": "Amount of WFLR to unwrap (e.g., '1.0' for 1 WFLR)"
+            }
+        },
+        "required": ["amount_wflr"]
+    }
+)
+
 # Create tools with the function declarations
 def get_swap_tool():
     return Tool(function_declarations=[swap_function])
@@ -217,8 +249,11 @@ def get_liquidity_tools():
         get_pool_info_function
     ])
 
+def get_wrap_unwrap_tools():
+    return Tool(function_declarations=[wrap_flr_function, unwrap_wflr_function])
+
 def get_all_tools():
-    return [get_swap_tool(), get_lending_tool(), get_liquidity_tools()]
+    return [get_swap_tool(), get_lending_tool(), get_liquidity_tools(), get_wrap_unwrap_tools()]
 
 # Export token dictionaries
 def get_flare_tokens():
