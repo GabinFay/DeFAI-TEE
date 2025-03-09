@@ -48,7 +48,7 @@ python flare_uniswap_add_liquidity.py
 This script demonstrates how to remove liquidity from a Uniswap V3 position on Flare.
 
 ```bash
-python flare_uniswap_remove_liquidity.py <position_id> --percent <percentage>
+python flare_uniswap_remove_liquidity.py
 ```
 
 ### flare_uniswap_sdk_test.py
@@ -65,6 +65,14 @@ python flare_uniswap_sdk_test.py --pool
 python flare_uniswap_sdk_test.py --positions
 python flare_uniswap_sdk_test.py --provide
 python flare_uniswap_sdk_test.py --remove <position_id> --percent <percentage>
+```
+
+### streamlit_gemini_swap.py
+
+This is the main Streamlit application that provides a user interface for interacting with Uniswap on Flare.
+
+```bash
+streamlit run streamlit_gemini_swap.py
 ```
 
 ## SDK Modifications
@@ -160,4 +168,28 @@ When using Docker with blockchain applications, always be mindful of security:
 1. **NEVER include private keys or API keys in your Docker image**
 2. **ALWAYS use .env files or environment variables to pass sensitive information**
 3. **Verify your .dockerignore file excludes sensitive files**
-4. **Consider using Docker secrets for production deployments** 
+4. **Consider using Docker secrets for production deployments**
+
+## TEE Attestation
+
+This application supports Trusted Execution Environment (TEE) attestation when deployed on Google Cloud Confidential VMs. The attestation feature allows you to verify that the application is running in a secure TEE environment.
+
+### How to Use Attestation
+
+1. Deploy the application on a Google Cloud Confidential VM
+2. Set `SIMULATE_ATTESTATION=false` in your environment variables
+3. In the Streamlit UI, click the "Generate Attestation" button in the sidebar
+4. The application will automatically generate and verify the attestation token
+5. If verification is successful, you'll see attestation details including issuer, issuance time, and expiration time
+
+### Attestation Verification
+
+The application automatically verifies the attestation token after generation by:
+- Validating the token structure and signature algorithm
+- Checking that the token contains the expected nonce (preventing replay attacks)
+- Verifying the token issuer and expiration time
+- For simulated tokens, a simplified verification process is used
+
+### Environment Variables
+
+- `SIMULATE_ATTESTATION`: Set to "false" to use real attestation (default) or "true" to use simulated attestation for testing 

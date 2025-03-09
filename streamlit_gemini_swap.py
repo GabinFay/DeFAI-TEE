@@ -10,6 +10,8 @@ import re
 import sys
 import threading
 from io import StringIO
+# Import the attestation module
+from tee_attestation import generate_and_verify_attestation
 
 # Custom stdout redirector for real-time display in Streamlit
 class StreamlitStdoutRedirector:
@@ -712,6 +714,51 @@ with st.sidebar:
     model_name = selected_model.split("/")[-1]
     if model_name in MODEL_DESCRIPTIONS:
         st.caption(MODEL_DESCRIPTIONS[model_name])
+    
+    # Add TEE Attestation section
+    st.subheader("TEE Attestation")
+    
+    # Initialize attestation state if not exists
+    if "attestation_token" not in st.session_state:
+        st.session_state.attestation_token = None
+        st.session_state.attestation_status = None
+        st.session_state.attestation_message = None
+        st.session_state.attestation_claims = None
+    
+    # Add Generate Attestation button
+    if st.button("Generate Attestation"):
+        with st.spinner("Generating and verifying TEE attestation..."):
+            success, message, token, claims = generate_and_verify_attestation()
+            st.session_state.attestation_status = success
+            st.session_state.attestation_message = message
+            st.session_state.attestation_token = token
+            st.session_state.attestation_claims = claims
+    
+    # Display attestation status if available
+    if st.session_state.attestation_status is not None:
+        if st.session_state.attestation_status:
+            st.success(st.session_state.attestation_message)
+            
+            # Show attestation details
+            if st.session_state.attestation_claims:
+                with st.expander("Attestation Details"):
+                    st.write("**Issuer:** ", st.session_state.attestation_claims.get("iss", "Unknown"))
+                    st.write("**Issued at:** ", time.strftime('%Y-%m-%d %H:%M:%S', 
+                                                             time.localtime(st.session_state.attestation_claims.get("iat", 0))))
+                    st.write("**Expires at:** ", time.strftime('%Y-%m-%d %H:%M:%S', 
+                                                              time.localtime(st.session_state.attestation_claims.get("exp", 0))))
+                    st.write("**Audience:** ", st.session_state.attestation_claims.get("aud", "Unknown"))
+            
+            # Show a truncated version of the token
+            if st.session_state.attestation_token:
+                token_display = st.session_state.attestation_token[:20] + "..." if len(st.session_state.attestation_token) > 20 else st.session_state.attestation_token
+                st.code(token_display, language="text")
+                # Add a button to copy the full token
+                if st.button("Copy Full Token"):
+                    st.write("Token copied to clipboard!")
+                    st.session_state.clipboard = st.session_state.attestation_token
+        else:
+            st.error(st.session_state.attestation_message)
     
     # Chat Statistics
     st.subheader("Chat Statistics")
