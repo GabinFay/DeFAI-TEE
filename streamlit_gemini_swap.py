@@ -724,6 +724,14 @@ with st.sidebar:
         st.session_state.attestation_status = None
         st.session_state.attestation_message = None
         st.session_state.attestation_claims = None
+        st.session_state.attestation_debug = None
+    
+    # Display simulation status
+    is_simulated = os.environ.get("SIMULATE_ATTESTATION", "false").lower() == "true"
+    if is_simulated:
+        st.info("⚠️ Running in simulation mode (SIMULATE_ATTESTATION=true)")
+    else:
+        st.info("🔒 Running in real TEE attestation mode (SIMULATE_ATTESTATION=false)")
     
     # Add Generate Attestation button
     if st.button("Generate Attestation"):
@@ -733,6 +741,15 @@ with st.sidebar:
             st.session_state.attestation_message = message
             st.session_state.attestation_token = token
             st.session_state.attestation_claims = claims
+            
+            # Store debug information
+            debug_info = {
+                "simulation_mode": is_simulated,
+                "token_length": len(token) if token else 0,
+                "has_nonces": "nonces" in claims if claims else False,
+                "nonces": claims.get("nonces", []) if claims else []
+            }
+            st.session_state.attestation_debug = debug_info
     
     # Display attestation status if available
     if st.session_state.attestation_status is not None:
@@ -743,22 +760,38 @@ with st.sidebar:
             if st.session_state.attestation_claims:
                 with st.expander("Attestation Details"):
                     st.write("**Issuer:** ", st.session_state.attestation_claims.get("iss", "Unknown"))
-                    st.write("**Issued at:** ", time.strftime('%Y-%m-%d %H:%M:%S', 
-                                                             time.localtime(st.session_state.attestation_claims.get("iat", 0))))
-                    st.write("**Expires at:** ", time.strftime('%Y-%m-%d %H:%M:%S', 
-                                                              time.localtime(st.session_state.attestation_claims.get("exp", 0))))
+                    st.write("**Issued at:** ", time.strftime("%Y-%m-%d %H:%M:%S", 
+                        time.localtime(st.session_state.attestation_claims.get("iat", 0))))
+                    st.write("**Expires at:** ", time.strftime("%Y-%m-%d %H:%M:%S", 
+                        time.localtime(st.session_state.attestation_claims.get("exp", 0))))
                     st.write("**Audience:** ", st.session_state.attestation_claims.get("aud", "Unknown"))
+                    
+                    # Display nonces
+                    nonces = st.session_state.attestation_claims.get("nonces", [])
+                    st.write("**Nonces:**")
+                    for nonce in nonces:
+                        st.code(nonce)
             
-            # Show a truncated version of the token
+            # Display token
             if st.session_state.attestation_token:
                 token_display = st.session_state.attestation_token[:20] + "..." if len(st.session_state.attestation_token) > 20 else st.session_state.attestation_token
-                st.code(token_display, language="text")
-                # Add a button to copy the full token
-                if st.button("Copy Full Token"):
-                    st.write("Token copied to clipboard!")
-                    st.session_state.clipboard = st.session_state.attestation_token
+                with st.expander("Attestation Token"):
+                    st.code(st.session_state.attestation_token)
+                    if st.button("Copy Token to Clipboard"):
+                        st.session_state.clipboard = st.session_state.attestation_token
+                        st.success("Token copied to clipboard!")
         else:
             st.error(st.session_state.attestation_message)
+            
+            # Show debug information if available
+            if st.session_state.attestation_debug:
+                with st.expander("Debug Information"):
+                    st.json(st.session_state.attestation_debug)
+                
+            # If token exists but validation failed, show it for debugging
+            if st.session_state.attestation_token:
+                with st.expander("Raw Token (Failed Validation)"):
+                    st.code(st.session_state.attestation_token)
     
     # Chat Statistics
     st.subheader("Chat Statistics")

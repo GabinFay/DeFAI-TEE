@@ -81,7 +81,7 @@ tee-env-FLARE_RPC_URL=$FLARE_RPC_URL,\
 tee-env-WALLET_ADDRESS=$WALLET_ADDRESS,\
 tee-env-PRIVATE_KEY=$PRIVATE_KEY,\
 tee-env-REACT_APP_RAINBOW_PROJECT_ID=$REACT_APP_RAINBOW_PROJECT_ID,\
-tee-env-GITHUB_TOKEN=$GITHUB_TOKEN, \
+tee-env-GITHUB_TOKEN=$GITHUB_TOKEN,\
 tee-env-SIMULATE_ATTESTATION=$SIMULATE_ATTESTATION \
   --maintenance-policy=MIGRATE \
   --provisioning-model=STANDARD \
@@ -124,13 +124,29 @@ if [ -z "$FIREWALL_EXISTS" ]; then
         --target-tags=flare-ai-core
 fi
 
+# Create firewall rule to allow HTTPS port 443 if it doesn't exist
+HTTPS_FIREWALL_EXISTS=$(gcloud compute firewall-rules list --filter="name=allow-https" --format="get(name)")
+if [ -z "$HTTPS_FIREWALL_EXISTS" ]; then
+    echo ""
+    echo -e "${GREEN}Creating firewall rule for HTTPS port 443...${NC}"
+    gcloud compute firewall-rules create allow-https \
+        --project=verifiable-ai-hackathon \
+        --direction=INGRESS \
+        --priority=1000 \
+        --network=default \
+        --action=ALLOW \
+        --rules=tcp:443 \
+        --source-ranges=0.0.0.0/0 \
+        --target-tags=flare-ai-core
+fi
+
 echo ""
 echo -e "${GREEN}Deployment complete!${NC}"
 echo ""
 echo "Your Confidential VM has been deployed with the following details:"
 echo "Instance Name: $INSTANCE_NAME"
 echo "External IP: $EXTERNAL_IP"
-echo "Access your application at: http://$EXTERNAL_IP"
+echo "Access your application at: http://$EXTERNAL_IP or https://$EXTERNAL_IP"
 echo ""
 echo "To view logs, run:"
 echo "gcloud logging read \"resource.type=gce_instance AND resource.labels.instance_id=$(gcloud compute instances describe $INSTANCE_NAME --zone=us-central1-c --format='get(id)')\" --project=verifiable-ai-hackathon"
@@ -139,4 +155,5 @@ echo "To restart the VM (to pull updated images), run:"
 echo "gcloud compute instances stop $INSTANCE_NAME --zone=us-central1-c"
 echo "gcloud compute instances start $INSTANCE_NAME --zone=us-central1-c"
 echo ""
-echo "Note: It may take a few minutes for the application to start. If you cannot access it immediately, please wait and try again." 
+echo "Note: It may take a few minutes for the application to start. If you cannot access it immediately, please wait and try again."
+echo "Note: When accessing via HTTPS, you may see a certificate warning since we're using a self-signed certificate." 

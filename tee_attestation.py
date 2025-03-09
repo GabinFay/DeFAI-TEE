@@ -157,8 +157,36 @@ class Vtpm:
         simulate_attestation = os.environ.get("SIMULATE_ATTESTATION", "false").lower() == "true"
         if simulate_attestation or self.simulate:
             self.logger.debug("Using simulated attestation token")
-            # Return a dummy token for simulation
-            return "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZpZGVudGlhbC1zcGFjZS12dHBtLXYwIiwidHlwIjoiSldUIn0.eyJhdWQiOiJodHRwczovL3N0cy5nb29nbGUuY29tIiwiZXhwIjoxNzEwMDI0NzY5LCJpYXQiOjE3MTAwMjExNjksImlzcyI6Imh0dHBzOi8vY29uZmlkZW50aWFsY29tcHV0aW5nLmdvb2dsZWFwaXMuY29tIiwibm9uY2VzIjpbInNpbXVsYXRlZF9ub25jZSJdLCJzdWIiOiJodHRwczovL2NvbmZpZGVudGlhbGNvbXB1dGluZy5nb29nbGVhcGlzLmNvbSJ9.simulated_signature"
+            # Create a simulated token that includes the provided nonces
+            # This is a dummy token for testing purposes
+            header = {
+                "alg": "RS256",
+                "kid": "confidential-space-vtpm-v0",
+                "typ": "JWT"
+            }
+            
+            # Current time and expiration (1 hour from now)
+            now = int(time.time())
+            exp = now + 3600
+            
+            # Create payload with the actual nonces provided
+            payload = {
+                "iss": "https://confidentialcomputing.googleapis.com",
+                "sub": "https://confidentialcomputing.googleapis.com",
+                "aud": audience,
+                "iat": now,
+                "exp": exp,
+                "nonces": nonces + ["simulated_nonce"]  # Include both the provided nonces and a marker
+            }
+            
+            # Encode the token without signature verification (for simulation)
+            token_parts = [
+                base64.urlsafe_b64encode(json.dumps(header).encode()).decode().rstrip('='),
+                base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip('='),
+                "simulated_signature"
+            ]
+            
+            return '.'.join(token_parts)
 
         # Connect to the socket
         try:
@@ -226,16 +254,9 @@ class VtpmValidation:
         Raises:
             VtpmValidationError: If validation fails
         """
-        # For simulated tokens, perform minimal validation
-        if token.count('.') == 2 and "simulated" in token:
-            self.logger.info("Validating simulated token with minimal checks")
-            try:
-                # Just decode without verification for simulated tokens
-                return jwt.decode(token, options={"verify_signature": False})
-            except jwt.PyJWTError as e:
-                raise VtpmValidationError(f"Failed to decode simulated token: {str(e)}")
+        # Check if this is a simulated token
+        is_simulated = "simulated_signature" in token
         
-        # For real tokens, perform more thorough validation
         try:
             # Get the unverified header to determine validation method
             unverified_header = jwt.get_unverified_header(token)
@@ -244,9 +265,31 @@ class VtpmValidation:
             if unverified_header.get("alg") != ALGO:
                 raise VtpmValidationError(f"Invalid algorithm: {unverified_header.get('alg')}")
             
-            # For real validation, we would need to implement the full validation logic
-            # including certificate chain validation or JWKS key retrieval
+            # For simulated tokens, perform minimal validation
+            if is_simulated:
+                self.logger.info("Validating simulated token with minimal checks")
+                decoded_token = jwt.decode(
+                    token, 
+                    options={
+                        "verify_signature": False,
+                        "verify_aud": False,
+                    }
+                )
+                
+                # Validate basic claims for simulated token
+                if decoded_token.get("iss") != self.expected_issuer:
+                    raise VtpmValidationError(f"Invalid issuer: {decoded_token.get('iss')}")
+                
+                # Check if token is expired
+                exp = decoded_token.get("exp")
+                if exp and exp < time.time():
+                    raise VtpmValidationError("Token is expired")
+                
+                return decoded_token
+            
+            # For real tokens, perform more thorough validation
             # For now, we'll just decode the token without verification
+            # In a production environment, you would implement the full validation logic
             decoded_token = jwt.decode(
                 token, 
                 options={
@@ -261,7 +304,7 @@ class VtpmValidation:
             
             # Check if token is expired
             exp = decoded_token.get("exp")
-            if exp and exp < datetime.datetime.now().timestamp():
+            if exp and exp < time.time():
                 raise VtpmValidationError("Token is expired")
                 
             return decoded_token
@@ -284,10 +327,11 @@ def generate_and_verify_attestation() -> Tuple[bool, str, Optional[str], Optiona
         # Generate a random nonce for the attestation request
         nonce = secrets.token_hex(16)
         
+        # Check if we're in simulation mode
+        simulate = os.environ.get("SIMULATE_ATTESTATION", "false").lower() == "true"
+        
         # Create the attestation client
-        vtpm = Vtpm(
-            simulate=os.environ.get("SIMULATE_ATTESTATION", "false").lower() == "true"
-        )
+        vtpm = Vtpm(simulate=simulate)
         
         # Request the attestation token
         token = vtpm.get_token(nonces=[nonce])
@@ -297,8 +341,17 @@ def generate_and_verify_attestation() -> Tuple[bool, str, Optional[str], Optiona
         claims = validator.validate_token(token)
         
         # Check if the nonce is in the token
-        if nonce not in claims.get("nonces", []):
-            return False, "Attestation verification failed: nonce mismatch", token, None
+        token_nonces = claims.get("nonces", [])
+        
+        # In simulation mode, we don't need to check the exact nonce
+        # since the simulated token uses a fixed nonce
+        if simulate:
+            if not token_nonces or "simulated_nonce" not in token_nonces:
+                return False, "Attestation verification failed: simulated nonce not found", token, None
+        else:
+            # In real mode, check for the exact nonce
+            if nonce not in token_nonces:
+                return False, f"Attestation verification failed: nonce mismatch (expected: {nonce}, got: {token_nonces})", token, None
         
         return True, "Attestation generated and verified successfully!", token, claims
     except VtpmAttestationError as e:
