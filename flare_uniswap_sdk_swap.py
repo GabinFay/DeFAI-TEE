@@ -11,8 +11,54 @@ from web3 import Web3
 from web3.middleware import geth_poa_middleware
 from uniswap import Uniswap
 from eth_account import Account
+from uniswap.fee import FeeTier
 
-def swap_tokens(token_in, token_out, amount_in_eth, fee=3000):
+def find_best_fee_tier(uniswap, token_in, token_out):
+    """
+    Find the best fee tier for a token pair based on liquidity
+    
+    Args:
+        uniswap (Uniswap): Initialized Uniswap instance
+        token_in (str): Address of the input token
+        token_out (str): Address of the output token
+        
+    Returns:
+        int: The fee tier with the most liquidity (3000 as default if no pool found)
+    """
+    # Available fee tiers in Uniswap V3
+    fee_tiers = [FeeTier.TIER_100, FeeTier.TIER_500, FeeTier.TIER_3000, FeeTier.TIER_10000]
+    
+    # Dictionary to store liquidity for each fee tier
+    liquidity_by_fee = {}
+    
+    # Check each fee tier
+    for fee in fee_tiers:
+        try:
+            # Try to get the pool for this fee tier
+            pool = uniswap.get_pool_instance(token_in, token_out, fee)
+            
+            # Get the pool state which includes liquidity
+            pool_state = uniswap.get_pool_state(pool)
+            liquidity = int(pool_state.get('liquidity', 0))
+            
+            print(f"Fee tier {fee} ({fee/10000}%) has liquidity: {liquidity}")
+            liquidity_by_fee[fee] = liquidity
+        except Exception as e:
+            print(f"No pool found for fee tier {fee} ({fee/10000}%): {str(e)}")
+            liquidity_by_fee[fee] = 0
+    
+    # Find the fee tier with the highest liquidity
+    if liquidity_by_fee:
+        best_fee = max(liquidity_by_fee.items(), key=lambda x: x[1])
+        if best_fee[1] > 0:
+            print(f"Best fee tier is {best_fee[0]} ({best_fee[0]/10000}%) with liquidity {best_fee[1]}")
+            return best_fee[0]
+    
+    # Default to 0.3% if no pool found or all have zero liquidity
+    print("No pools with liquidity found, defaulting to 0.3% fee tier")
+    return FeeTier.TIER_3000
+
+def swap_tokens(token_in, token_out, amount_in_eth, fee=None):
     """
     Swap tokens on Flare network using Uniswap V3 via the uniswap-python SDK
     
@@ -20,7 +66,7 @@ def swap_tokens(token_in, token_out, amount_in_eth, fee=3000):
         token_in (str): Address of the input token
         token_out (str): Address of the output token
         amount_in_eth (float): Amount of input token in ETH units (e.g., 0.01 for 0.01 WFLR)
-        fee (int): Fee tier (3000 = 0.3%)
+        fee (int, optional): Fee tier (3000 = 0.3%). If None, will automatically find the best fee tier.
         
     Returns:
         dict: Transaction receipt if successful, None otherwise
@@ -60,8 +106,14 @@ def swap_tokens(token_in, token_out, amount_in_eth, fee=3000):
         default_slippage=0.01  # 1% slippage
     )
     
+    # If fee is not provided, find the best fee tier based on liquidity
+    if fee is None:
+        print("No fee tier specified, finding the best fee tier based on liquidity...")
+        fee = find_best_fee_tier(uniswap, token_in_address, token_out_address)
+    
     # Print the router address being used to verify it's correct
     print(f"Using Uniswap V3 Router address: {uniswap.router.address}")
+    print(f"Using fee tier: {fee} ({fee/10000}%)")
     
     # Convert amount to wei
     amount_in_wei = web3.to_wei(amount_in_eth, 'ether')
