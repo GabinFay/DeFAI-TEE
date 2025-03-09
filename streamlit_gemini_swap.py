@@ -36,6 +36,10 @@ if "token_balances" not in st.session_state:
     st.session_state.token_balances = {}
 if "last_balance_update" not in st.session_state:
     st.session_state.last_balance_update = None
+if "private_key" not in st.session_state:
+    st.session_state.private_key = None
+if "wallet_connected" not in st.session_state:
+    st.session_state.wallet_connected = False
 
 # Custom stdout redirector for real-time display in Streamlit
 class StreamlitStdoutRedirector:
@@ -892,7 +896,7 @@ def handle_function_call(function_call):
                             continue
                     
                     # Get token info using get_token_balance function
-                    token_info = get_token_balance(uniswap.w3, token_address, uniswap.address)
+                    token_info = get_token_balance(uniswap.w3, token_address, wallet_address)
                     
                     # Add to balances
                     balances[token_symbol] = token_info
@@ -1248,17 +1252,24 @@ def initialize_web3():
     # Get environment variables
     flare_rpc_url = os.getenv("FLARE_RPC_URL", "https://flare-api.flare.network/ext/C/rpc")
     
-    # Get wallet address from environment or private key
-    wallet_address = os.getenv("WALLET_ADDRESS")
-    private_key = os.getenv("PRIVATE_KEY")
-    
-    if private_key and not wallet_address:
+    # First check if we have a private key in session state
+    if st.session_state.wallet_connected and st.session_state.private_key:
+        private_key = st.session_state.private_key
         # Derive wallet address from private key
         account = Account.from_key(private_key)
         wallet_address = account.address
+    else:
+        # Fall back to environment variables
+        wallet_address = os.getenv("WALLET_ADDRESS")
+        private_key = os.getenv("PRIVATE_KEY")
+        
+        if private_key and not wallet_address:
+            # Derive wallet address from private key
+            account = Account.from_key(private_key)
+            wallet_address = account.address
     
     if not wallet_address:
-        raise ValueError("WALLET_ADDRESS must be set in .env file or derived from PRIVATE_KEY")
+        raise ValueError("No wallet address available. Please connect a wallet or set WALLET_ADDRESS in .env file")
     
     # Initialize Web3
     web3 = Web3(Web3.HTTPProvider(flare_rpc_url))
@@ -1351,7 +1362,19 @@ def fetch_and_display_balances():
     """
     try:
         # Initialize Web3 and get wallet address
-        web3, wallet_address = initialize_web3()
+        # Use session state private key if available, otherwise use environment variable
+        if st.session_state.wallet_connected and st.session_state.private_key:
+            # Create a new Web3 instance with the private key from session state
+            flare_rpc_url = os.getenv("FLARE_RPC_URL", "https://flare-api.flare.network/ext/C/rpc")
+            web3 = Web3(Web3.HTTPProvider(flare_rpc_url))
+            web3.middleware_onion.inject(geth_poa_middleware, layer=0)
+            
+            # Derive wallet address from private key in session state
+            account = Account.from_key(st.session_state.private_key)
+            wallet_address = account.address
+        else:
+            # Fall back to environment variables
+            web3, wallet_address = initialize_web3()
         
         # Get native FLR balance
         native_balance = get_native_balance(web3, wallet_address)
@@ -1382,6 +1405,69 @@ def fetch_and_display_balances():
 
 # Display token balances in the sidebar
 def display_balances_sidebar():
+    # Wallet connection section - FIRST THING in sidebar
+    st.sidebar.title("Wallet Connection")
+    
+    # Display wallet connection status
+    if st.session_state.wallet_connected:
+        wallet_address = ""
+        try:
+            # Derive wallet address from private key
+            account = Account.from_key(st.session_state.private_key)
+            wallet_address = account.address
+            st.sidebar.success(f"Wallet connected: {wallet_address[:6]}...{wallet_address[-4:]}")
+            
+            # Add disconnect button
+            if st.sidebar.button("Disconnect Wallet"):
+                st.session_state.private_key = None
+                st.session_state.wallet_connected = False
+                if "PRIVATE_KEY" in os.environ:
+                    del os.environ["PRIVATE_KEY"]
+                if "WALLET_ADDRESS" in os.environ:
+                    del os.environ["WALLET_ADDRESS"]
+                st.rerun()
+        except:
+            st.sidebar.warning("Wallet connected but address could not be derived")
+    else:
+        # Private key input
+        private_key_input = st.sidebar.text_input(
+            "Enter your private key",
+            type="password",
+            help="Your private key is stored securely in the session and not shared",
+            placeholder="0x..."
+        )
+        
+        # Submit button
+        if st.sidebar.button("Connect Wallet"):
+            if private_key_input:
+                try:
+                    # Validate private key format
+                    if private_key_input.startswith("0x") and len(private_key_input) == 66:
+                        # Store private key in session state
+                        st.session_state.private_key = private_key_input
+                        st.session_state.wallet_connected = True
+                        
+                        # Derive wallet address for display
+                        account = Account.from_key(private_key_input)
+                        wallet_address = account.address
+                        
+                        # Set environment variable for other functions to use
+                        os.environ["PRIVATE_KEY"] = private_key_input
+                        os.environ["WALLET_ADDRESS"] = wallet_address
+                        
+                        # Fetch initial balances
+                        fetch_and_display_balances()
+                        
+                        st.sidebar.success(f"Wallet connected: {wallet_address[:6]}...{wallet_address[-4:]}")
+                        st.rerun()
+                    else:
+                        st.sidebar.error("Invalid private key format. It should start with '0x' and be 66 characters long.")
+                except Exception as e:
+                    st.sidebar.error(f"Error connecting wallet: {str(e)}")
+            else:
+                st.sidebar.warning("Please enter a private key to connect your wallet")
+    
+    # Token balances section
     st.sidebar.markdown("## Your Token Balances")
     
     # Remove automatic balance fetching
