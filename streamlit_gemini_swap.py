@@ -678,6 +678,51 @@ You can ask it to swap tokens, add or remove liquidity, and more.
 # Display balances in the sidebar
 display_balances_sidebar()
 
+# Add attestation section to sidebar
+st.sidebar.markdown("## TEE Attestation")
+if st.sidebar.button("Generate Attestation"):
+    with st.sidebar.status("Generating attestation...", expanded=True) as status:
+        try:
+            # Check if running in TEE
+            tee_status = is_running_in_tee()
+            if tee_status:
+                # Generate attestation
+                attestation_result = generate_and_verify_attestation()
+                
+                if attestation_result["success"]:
+                    st.session_state.attestation_status = "success"
+                    st.session_state.attestation_message = "Attestation successful"
+                    # Don't store the actual token in session state
+                    # st.session_state.attestation_token = attestation_result.get("token")
+                    # Don't store the full claims in session state
+                    # st.session_state.attestation_claims = attestation_result.get("claims")
+                    status.update(label="Attestation successful!", state="complete")
+                else:
+                    st.session_state.attestation_status = "failed"
+                    st.session_state.attestation_message = attestation_result.get("error", "Unknown error")
+                    status.update(label="Attestation failed", state="error")
+            else:
+                st.session_state.attestation_status = "not_tee"
+                st.session_state.attestation_message = "Not running in a TEE environment"
+                status.update(label="Not running in TEE", state="error")
+        except Exception as e:
+            st.session_state.attestation_status = "error"
+            st.session_state.attestation_message = str(e)
+            status.update(label=f"Error: {str(e)}", state="error")
+
+# Display attestation status if available
+if st.session_state.attestation_status:
+    if st.session_state.attestation_status == "success":
+        st.sidebar.success(st.session_state.attestation_message)
+        # Remove the claims expander that shows sensitive information
+        # if st.session_state.attestation_claims:
+        #     with st.sidebar.expander("Attestation Claims"):
+        #         st.json(st.session_state.attestation_claims)
+    elif st.session_state.attestation_status == "not_tee":
+        st.sidebar.warning(st.session_state.attestation_message)
+    else:
+        st.sidebar.error(st.session_state.attestation_message)
+
 # Set default model to the first in the list
 if "model" not in st.session_state or st.session_state.model not in GEMINI_MODELS:
     st.session_state.model = GEMINI_MODELS[0]
