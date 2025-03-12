@@ -11,6 +11,10 @@ from web3.middleware import geth_poa_middleware
 import threading  # Add this import
 import os
 
+from flare_uniswap_positions import get_positions
+from flare_uniswap_pool_info import get_pool_info
+
+
 # Import the real swap function
 try:
     from flare_uniswap_sdk_swap import swap_tokens
@@ -19,6 +23,9 @@ except ImportError:
 
 # Import token data
 from tools import get_flare_tokens, get_kinetic_tokens
+
+# Import the liquidity functions
+from flare_uniswap_liquidity import add_liquidity, remove_liquidity
 
 # Create a function that will be set from outside
 fetch_and_display_balances = lambda: None  # Default no-op function
@@ -326,9 +333,6 @@ def handle_wrap_flr(args):
 **Transaction Hash**: {format_tx_hash_as_link(tx_hash_hex)}
 """, unsafe_allow_html=True)
             
-            # Update token balances after successful wrap
-            # fetch_and_display_balances()
-            
             return success_message
         else:
             # Import and use the wrap_flare function from wrap_flare.py
@@ -405,9 +409,6 @@ def handle_wrap_flr(args):
                 "transaction_hash": tx_hash_hex,
                 "explorer_url": format_tx_hash_as_link(tx_hash_hex)
             }
-            
-            # Update token balances after successful wrap
-            # fetch_and_display_balances()
             
             return success_message
     except Exception as e:
@@ -580,9 +581,6 @@ def handle_unwrap_wflr(args):
 **Transaction Hash**: {format_tx_hash_as_link(tx_hash_hex)}
 """, unsafe_allow_html=True)
             
-            # Update token balances after successful unwrap
-            # fetch_and_display_balances()
-            
             return success_message
         else:
             # Import and use the unwrap_flare function from unwrap_flare.py
@@ -658,9 +656,6 @@ def handle_unwrap_wflr(args):
                 "transaction_hash": tx_hash_hex,
                 "explorer_url": format_tx_hash_as_link(tx_hash_hex)
             }
-            
-            # Update token balances after successful unwrap
-            # fetch_and_display_balances()
             
             return success_message
     except Exception as e:
@@ -960,18 +955,86 @@ def handle_swap(args):
 
 # Add these missing handler functions
 def handle_add_liquidity(args):
-    """Handle adding liquidity to a Uniswap V3 pool"""
-    return {
-        "success": False,
-        "message": "Add liquidity functionality is not yet implemented"
-    }
+    """Handle add_liquidity function call from Gemini"""
+    try:
+        # Extract arguments
+        token0 = args.get("token0")
+        token1 = args.get("token1")
+        amount0 = float(args.get("amount0"))
+        amount1 = float(args.get("amount1"))
+        fee = int(args.get("fee", 3000))
+        
+        # Get private key from session state
+        private_key = st.session_state.private_key
+        rpc_url = st.session_state.rpc_url
+        
+        # Redirect stdout to capture logs
+        old_stdout = sys.stdout
+        stdout_redirector = StreamlitStdoutRedirector(st.session_state.realtime_output_container)
+        sys.stdout = stdout_redirector
+        
+        try:
+            # Call the add_liquidity function
+            result = add_liquidity(
+                token0=token0,
+                token1=token1,
+                amount0=amount0,
+                amount1=amount1,
+                fee=fee,
+                private_key=private_key,
+                rpc_url=rpc_url
+            )
+            
+            return result
+        finally:
+            # Restore stdout
+            sys.stdout = old_stdout
+            
+    except Exception as e:
+        error_message = f"Error adding liquidity: {str(e)}\n{traceback.format_exc()}"
+        print(error_message)
+        return {
+            "success": False,
+            "message": error_message
+        }
 
 def handle_remove_liquidity(args):
-    """Handle removing liquidity from a position"""
-    return {
-        "success": False,
-        "message": "Remove liquidity functionality is not yet implemented"
-    }
+    """Handle remove_liquidity function call from Gemini"""
+    try:
+        # Extract arguments
+        position_id = int(args.get("position_id"))
+        percent_to_remove = float(args.get("percent_to_remove", 100))
+        
+        # Get private key from session state
+        private_key = st.session_state.private_key
+        rpc_url = st.session_state.rpc_url
+        
+        # Redirect stdout to capture logs
+        old_stdout = sys.stdout
+        stdout_redirector = StreamlitStdoutRedirector(st.session_state.realtime_output_container)
+        sys.stdout = stdout_redirector
+        
+        try:
+            # Call the remove_liquidity function
+            result = remove_liquidity(
+                position_id=position_id,
+                percent_to_remove=percent_to_remove,
+                private_key=private_key,
+                rpc_url=rpc_url
+            )
+            
+            return result
+        finally:
+            # Restore stdout
+            sys.stdout = old_stdout
+            
+    except Exception as e:
+        error_message = f"Error removing liquidity: {str(e)}\n{traceback.format_exc()}"
+        print(error_message)
+        return {
+            "success": False,
+            "message": error_message
+        }
 
 def handle_get_positions(args):
     """Handle getting liquidity positions"""
@@ -982,17 +1045,420 @@ def handle_get_positions(args):
 
 def handle_get_token_balances(args):
     """Handle getting token balances"""
-    # This would normally call fetch_and_display_balances
-    # But for now, just return a placeholder response
-    return {
-        "success": True,
-        "message": "Token balances retrieved",
-        "balances": "Use the 'Refresh Balances' button in the sidebar to see your token balances"
-    }
+    try:
+        # Call the fetch_and_display_balances function to get current balances
+        balances = fetch_and_display_balances()
+        
+        # Format the balances for display
+        formatted_balances = {}
+        for symbol, token_data in balances.items():
+            formatted_balances[symbol] = {
+                "symbol": symbol,
+                "balance": token_data["balance"],
+                "address": token_data["address"],
+                "name": token_data["name"]
+            }
+        
+        return {
+            "success": True,
+            "message": "Token balances retrieved successfully",
+            "balances": formatted_balances
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error fetching token balances: {str(e)}"
+        }
+
+def handle_get_positions(args):
+    """Handle getting liquidity positions"""
+    try:
+        log_message = f"🔧 FUNCTION CALL: get_positions\n"
+        log_message += f"Parameters: {args}\n"
+        log_message += f"\n🚀 Getting Uniswap V3 positions\n"
+        
+        # Add this log message to the session state
+        if "tool_logs" not in st.session_state:
+            st.session_state.tool_logs = []
+        st.session_state.tool_logs.append(log_message)
+        
+        # Create a placeholder for real-time stdout display
+        if "realtime_output_container" in st.session_state:
+            # Clear any previous content
+            st.session_state.realtime_output_container.empty()
+            
+            # Display initial message in the real-time output container
+            initial_message = f"Getting Uniswap V3 positions...\n"
+            initial_placeholder = st.session_state.realtime_output_container.empty()
+            initial_placeholder.markdown(f"<pre>{initial_message}</pre>", unsafe_allow_html=True)
+            
+            # Create a new placeholder for function output
+            stdout_placeholder = st.session_state.realtime_output_container.empty()
+            
+            # Set up stdout redirection
+            original_stdout = sys.stdout
+            stdout_redirector = StreamlitStdoutRedirector(stdout_placeholder)
+            sys.stdout = stdout_redirector
+            
+            try:
+                # Check for private key in session state or environment variables
+                private_key = None
+                if st.session_state.get("private_key"):
+                    print("Using private key from session state")
+                    private_key = st.session_state.private_key
+                else:
+                    # Try to get from environment variables
+                    env_private_key = os.getenv("PRIVATE_KEY")
+                    if env_private_key:
+                        print("Using private key from environment variables")
+                        private_key = env_private_key
+                    else:
+                        raise Exception("Private key is not available. Please connect your wallet or set PRIVATE_KEY in .env file.")
+                
+                # Get wallet address from args or derive from private key
+                wallet_address = args.get("wallet_address")
+                if not wallet_address:
+                    account = Account.from_key(private_key)
+                    wallet_address = account.address
+                    print(f"Using derived wallet address: {wallet_address}")
+                else:
+                    print(f"Using provided wallet address: {wallet_address}")
+                
+                # Set RPC URL
+                rpc_url = st.session_state.get("rpc_url", os.getenv("FLARE_RPC_URL"))
+                
+                # Call the get_positions function
+                positions = get_positions(
+                    private_key=private_key,
+                    rpc_url=rpc_url,
+                    wallet_address=wallet_address
+                )
+                
+                # Capture the final stdout content
+                stdout_content = stdout_redirector.get_value()
+                
+                # Add the stdout content to the logs
+                if stdout_content:
+                    st.session_state.tool_logs.append(stdout_content)
+            except Exception as e:
+                # Restore original stdout
+                sys.stdout = original_stdout
+                
+                # Re-raise the exception to be caught by the outer try-except
+                raise Exception(f"Failed to get positions: {str(e)}")
+            finally:
+                # Restore original stdout
+                sys.stdout = original_stdout
+            
+            if positions:
+                success_message = {
+                    "success": True,
+                    "message": f"Found {len(positions)} positions",
+                    "positions": positions
+                }
+                
+                # Add the result to the logs
+                result_log = f"✅ Successfully retrieved {len(positions)} positions\n"
+                st.session_state.tool_logs.append(result_log)
+                
+                # Display success message in the real-time output container
+                success_placeholder = st.session_state.realtime_output_container.empty()
+                
+                # Format positions for display
+                positions_display = ""
+                for pos in positions:
+                    positions_display += f"Position ID: {pos['position_id']}\n"
+                    positions_display += f"  Pair: {pos['token0']['symbol']}/{pos['token1']['symbol']}\n"
+                    positions_display += f"  Fee: {pos['fee_percent']}%\n"
+                    positions_display += f"  Liquidity: {pos['liquidity']}\n\n"
+                
+                success_placeholder.markdown(f"""<pre>
+✅ Successfully retrieved {len(positions)} positions!
+
+{positions_display}
+</pre>""", unsafe_allow_html=True)
+                
+                return success_message
+            else:
+                no_positions_message = {
+                    "success": True,
+                    "message": "No positions found",
+                    "positions": []
+                }
+                
+                # Add the result to the logs
+                result_log = f"ℹ️ No positions found\n"
+                st.session_state.tool_logs.append(result_log)
+                
+                # Display message in the real-time output container
+                info_placeholder = st.session_state.realtime_output_container.empty()
+                info_placeholder.markdown(f"""<pre>
+ℹ️ No positions found for this wallet
+</pre>""", unsafe_allow_html=True)
+                
+                return no_positions_message
+        else:
+            # Fallback if realtime_output_container is not available
+            # Check for private key in session state or environment variables
+            private_key = None
+            if st.session_state.get("private_key"):
+                private_key = st.session_state.private_key
+            else:
+                # Try to get from environment variables
+                env_private_key = os.getenv("PRIVATE_KEY")
+                if env_private_key:
+                    private_key = env_private_key
+                else:
+                    raise Exception("Private key is not available. Please connect your wallet or set PRIVATE_KEY in .env file.")
+            
+            # Get wallet address from args or derive from private key
+            wallet_address = args.get("wallet_address")
+            if not wallet_address:
+                account = Account.from_key(private_key)
+                wallet_address = account.address
+            
+            # Set RPC URL
+            rpc_url = st.session_state.get("rpc_url", os.getenv("FLARE_RPC_URL"))
+            
+            # Call the get_positions function
+            positions = get_positions(
+                private_key=private_key,
+                rpc_url=rpc_url,
+                wallet_address=wallet_address
+            )
+            
+            if positions:
+                return {
+                    "success": True,
+                    "message": f"Found {len(positions)} positions",
+                    "positions": positions
+                }
+            else:
+                return {
+                    "success": True,
+                    "message": "No positions found",
+                    "positions": []
+                }
+    except Exception as e:
+        # Restore original stdout if exception occurs
+        if 'original_stdout' in locals():
+            sys.stdout = original_stdout
+            
+        error_message = {
+            "success": False,
+            "message": f"Error getting positions: {str(e)}"
+        }
+        
+        # Add the error to the logs
+        error_log = f"❌ Error getting positions:\n{str(e)}\n"
+        if 'traceback' in sys.modules:
+            import traceback
+            error_log += traceback.format_exc()
+        st.session_state.tool_logs.append(error_log)
+        
+        # Display error message in the real-time output container if available
+        if "realtime_output_container" in st.session_state:
+            error_placeholder = st.session_state.realtime_output_container.empty()
+            error_placeholder.markdown(f"""<pre>
+❌ Error getting positions:
+{str(e)}
+</pre>""", unsafe_allow_html=True)
+        
+        return error_message
 
 def handle_get_pool_info(args):
     """Handle getting pool information"""
-    return {
-        "success": False,
-        "message": "Get pool info functionality is not yet implemented"
-    }
+    try:
+        # Extract arguments
+        token0 = args.get("token0")
+        token1 = args.get("token1")
+        fee = args.get("fee", 3000)
+        
+        if not token0 or not token1:
+            return {
+                "success": False,
+                "message": "Both token0 and token1 are required"
+            }
+        
+        log_message = f"🔧 FUNCTION CALL: get_pool_info\n"
+        log_message += f"Parameters:\n"
+        log_message += f"  - token0: {token0}\n"
+        log_message += f"  - token1: {token1}\n"
+        log_message += f"  - fee: {fee}\n"
+        log_message += f"\n🚀 Getting pool information\n"
+        
+        # Add this log message to the session state
+        if "tool_logs" not in st.session_state:
+            st.session_state.tool_logs = []
+        st.session_state.tool_logs.append(log_message)
+        
+        # Create a placeholder for real-time stdout display
+        if "realtime_output_container" in st.session_state:
+            # Clear any previous content
+            st.session_state.realtime_output_container.empty()
+            
+            # Display initial message in the real-time output container
+            initial_message = f"Getting pool information for {token0}/{token1} with fee {fee}...\n"
+            initial_placeholder = st.session_state.realtime_output_container.empty()
+            initial_placeholder.markdown(f"<pre>{initial_message}</pre>", unsafe_allow_html=True)
+            
+            # Create a new placeholder for function output
+            stdout_placeholder = st.session_state.realtime_output_container.empty()
+            
+            # Set up stdout redirection
+            original_stdout = sys.stdout
+            stdout_redirector = StreamlitStdoutRedirector(stdout_placeholder)
+            sys.stdout = stdout_redirector
+            
+            try:
+                # Check for private key in session state or environment variables
+                private_key = None
+                if st.session_state.get("private_key"):
+                    print("Using private key from session state")
+                    private_key = st.session_state.private_key
+                else:
+                    # Try to get from environment variables
+                    env_private_key = os.getenv("PRIVATE_KEY")
+                    if env_private_key:
+                        print("Using private key from environment variables")
+                        private_key = env_private_key
+                    else:
+                        raise Exception("Private key is not available. Please connect your wallet or set PRIVATE_KEY in .env file.")
+                
+                # Set RPC URL
+                rpc_url = st.session_state.get("rpc_url", os.getenv("FLARE_RPC_URL"))
+                
+                # Call the get_pool_info function
+                pool_info = get_pool_info(
+                    token0=token0,
+                    token1=token1,
+                    fee=fee,
+                    private_key=private_key,
+                    rpc_url=rpc_url
+                )
+                
+                # Capture the final stdout content
+                stdout_content = stdout_redirector.get_value()
+                
+                # Add the stdout content to the logs
+                if stdout_content:
+                    st.session_state.tool_logs.append(stdout_content)
+            except Exception as e:
+                # Restore original stdout
+                sys.stdout = original_stdout
+                
+                # Re-raise the exception to be caught by the outer try-except
+                raise Exception(f"Failed to get pool information: {str(e)}")
+            finally:
+                # Restore original stdout
+                sys.stdout = original_stdout
+            
+            if pool_info:
+                success_message = {
+                    "success": True,
+                    "message": f"Successfully retrieved pool information",
+                    "pool_info": pool_info
+                }
+                
+                # Add the result to the logs
+                result_log = f"✅ Successfully retrieved pool information\n"
+                st.session_state.tool_logs.append(result_log)
+                
+                # Display success message in the real-time output container
+                success_placeholder = st.session_state.realtime_output_container.empty()
+                
+                # Format pool info for display
+                pool_display = f"Pool Address: {pool_info['pool_address']}\n"
+                pool_display += f"Pair: {pool_info['token0']['symbol']}/{pool_info['token1']['symbol']}\n"
+                pool_display += f"Fee: {pool_info['fee_percent']}%\n"
+                pool_display += f"Liquidity: {pool_info['liquidity']}\n"
+                pool_display += f"Current Tick: {pool_info['tick']}\n"
+                pool_display += f"TVL: {pool_info['tvl']['token0']} {pool_info['token0']['symbol']} and {pool_info['tvl']['token1']} {pool_info['token1']['symbol']}\n"
+                
+                success_placeholder.markdown(f"""<pre>
+✅ Successfully retrieved pool information!
+
+{pool_display}
+</pre>""", unsafe_allow_html=True)
+                
+                return success_message
+            else:
+                no_pool_message = {
+                    "success": False,
+                    "message": "Pool not found or error occurred"
+                }
+                
+                # Add the result to the logs
+                result_log = f"❌ Pool not found or error occurred\n"
+                st.session_state.tool_logs.append(result_log)
+                
+                # Display message in the real-time output container
+                info_placeholder = st.session_state.realtime_output_container.empty()
+                info_placeholder.markdown(f"""<pre>
+❌ Pool not found or error occurred
+</pre>""", unsafe_allow_html=True)
+                
+                return no_pool_message
+        else:
+            # Fallback if realtime_output_container is not available
+            # Check for private key in session state or environment variables
+            private_key = None
+            if st.session_state.get("private_key"):
+                private_key = st.session_state.private_key
+            else:
+                # Try to get from environment variables
+                env_private_key = os.getenv("PRIVATE_KEY")
+                if env_private_key:
+                    private_key = env_private_key
+                else:
+                    raise Exception("Private key is not available. Please connect your wallet or set PRIVATE_KEY in .env file.")
+            
+            # Set RPC URL
+            rpc_url = st.session_state.get("rpc_url", os.getenv("FLARE_RPC_URL"))
+            
+            # Call the get_pool_info function
+            pool_info = get_pool_info(
+                token0=token0,
+                token1=token1,
+                fee=fee,
+                                private_key=private_key,
+                rpc_url=rpc_url
+            )
+            
+            if pool_info:
+                return {
+                    "success": True,
+                    "message": f"Successfully retrieved pool information",
+                    "pool_info": pool_info
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "Pool not found or error occurred"
+                }
+    except Exception as e:
+        # Restore original stdout if exception occurs
+        if 'original_stdout' in locals():
+            sys.stdout = original_stdout
+            
+        error_message = {
+            "success": False,
+            "message": f"Error getting pool information: {str(e)}"
+        }
+        
+        # Add the error to the logs
+        error_log = f"❌ Error getting pool information:\n{str(e)}\n"
+        if 'traceback' in sys.modules:
+            import traceback
+            error_log += traceback.format_exc()
+        st.session_state.tool_logs.append(error_log)
+        
+        # Display error message in the real-time output container if available
+        if "realtime_output_container" in st.session_state:
+            error_placeholder = st.session_state.realtime_output_container.empty()
+            error_placeholder.markdown(f"""<pre>
+❌ Error getting pool information:
+{str(e)}
+</pre>""", unsafe_allow_html=True)
+        
+        return error_message

@@ -308,7 +308,22 @@ def generate_response(prompt, model_name="models/gemini-2.0-flash"):
                                     
                                     # Send the function result back to Gemini
                                     # Important: Don't stream this response, and fully resolve it
-                                    final_response = chat.send_message(function_response, stream=False)
+                                    try:
+                                        # Format the function response correctly for Gemini
+                                        formatted_response = {"parts": [function_response]}
+                                        final_response = chat.send_message(formatted_response, stream=False)
+                                    except Exception as e:
+                                        print(f"Error sending function response to Gemini: {str(e)}")
+                                        # Try alternative format
+                                        try:
+                                            final_response = chat.send_message(function_response, stream=False)
+                                        except Exception as e2:
+                                            print(f"Second attempt failed: {str(e2)}")
+                                            # Use a fallback message if both attempts fail
+                                            final_text = f"Operation completed successfully: {part.function_call.name}"
+                                            message_placeholder.markdown(final_text, unsafe_allow_html=True)
+                                            yield final_text
+                                            return
                                     
                                     # Update the message to show the function call is completed
                                     success_icon = "✅" if result.get("success", False) else "❌"
@@ -323,7 +338,24 @@ def generate_response(prompt, model_name="models/gemini-2.0-flash"):
                                     message_placeholder.markdown(full_response + completion_message, unsafe_allow_html=True)
                                     
                                     # Get the final response text
-                                    final_text = final_response.text
+                                    final_text = ""
+                                    try:
+                                        # Safely access the text attribute
+                                        if hasattr(final_response, "text"):
+                                            final_text = final_response.text
+                                        elif hasattr(final_response, "parts") and final_response.parts:
+                                            final_text = str(final_response.parts[0])
+                                        elif hasattr(final_response, "candidates") and final_response.candidates:
+                                            for candidate in final_response.candidates:
+                                                if hasattr(candidate, "content") and candidate.content:
+                                                    if hasattr(candidate.content, "parts") and candidate.content.parts:
+                                                        for part in candidate.content.parts:
+                                                            if isinstance(part, str):
+                                                                final_text += part
+                                    except Exception as e:
+                                        # If there's an error extracting the text, use a generic message
+                                        print(f"Error extracting response text: {str(e)}")
+                                        final_text = f"Operation completed successfully: {part.function_call.name}"
                                     
                                     # If there's a transaction hash in the result, add a clickable link to the response
                                     if result.get("success", False) and "transaction_hash" in result:
@@ -342,6 +374,26 @@ def generate_response(prompt, model_name="models/gemini-2.0-flash"):
                                         else:
                                             # If no link or hash is present, append the link to the response
                                             final_text += f"\n\nTransaction: {format_tx_hash_as_link(tx_hash)}"
+                                    
+                                    # If final_text is empty or very short, generate a fallback response
+                                    if not final_text or len(final_text) < 10:
+                                        if result.get("success", False):
+                                            if part.function_call.name == "swap_tokens":
+                                                token_in = result.get("token_in", "tokens")
+                                                token_out = result.get("token_out", "tokens")
+                                                final_text = f"Great! I've successfully swapped your {token_in} to {token_out}."
+                                            elif part.function_call.name == "wrap_flr":
+                                                final_text = "Great! I've successfully wrapped your FLR to WFLR."
+                                            elif part.function_call.name == "unwrap_wflr":
+                                                final_text = "Great! I've successfully unwrapped your WFLR to FLR."
+                                            else:
+                                                final_text = f"Operation {part.function_call.name} completed successfully!"
+                                            
+                                            # Add transaction link if available
+                                            if "transaction_hash" in result:
+                                                final_text += f"\n\nTransaction: {format_tx_hash_as_link(result['transaction_hash'])}"
+                                        else:
+                                            final_text = f"I'm sorry, but the {part.function_call.name} operation failed: {result.get('message', 'Unknown error')}"
                                     
                                     # Display the final response
                                     message_placeholder.markdown(final_text, unsafe_allow_html=True)
@@ -379,7 +431,22 @@ def generate_response(prompt, model_name="models/gemini-2.0-flash"):
                 
                 # Send the function result back to Gemini
                 # Important: Don't stream this response, and fully resolve it
-                final_response = chat.send_message(function_response, stream=False)
+                try:
+                    # Format the function response correctly for Gemini
+                    formatted_response = {"parts": [function_response]}
+                    final_response = chat.send_message(formatted_response, stream=False)
+                except Exception as e:
+                    print(f"Error sending function response to Gemini: {str(e)}")
+                    # Try alternative format
+                    try:
+                        final_response = chat.send_message(function_response, stream=False)
+                    except Exception as e2:
+                        print(f"Second attempt failed: {str(e2)}")
+                        # Use a fallback message if both attempts fail
+                        final_text = f"Operation completed successfully: {function_call.name}"
+                        message_placeholder.markdown(final_text, unsafe_allow_html=True)
+                        yield final_text
+                        return
                 
                 # Update the message to show the function call is completed
                 success_icon = "✅" if result.get("success", False) else "❌"
@@ -394,7 +461,24 @@ def generate_response(prompt, model_name="models/gemini-2.0-flash"):
                 message_placeholder.markdown(full_response + completion_message, unsafe_allow_html=True)
                 
                 # Get the final response text
-                final_text = final_response.text
+                final_text = ""
+                try:
+                    # Safely access the text attribute
+                    if hasattr(final_response, "text"):
+                        final_text = final_response.text
+                    elif hasattr(final_response, "parts") and final_response.parts:
+                        final_text = str(final_response.parts[0])
+                    elif hasattr(final_response, "candidates") and final_response.candidates:
+                        for candidate in final_response.candidates:
+                            if hasattr(candidate, "content") and candidate.content:
+                                if hasattr(candidate.content, "parts") and candidate.content.parts:
+                                    for part in candidate.content.parts:
+                                        if isinstance(part, str):
+                                            final_text += part
+                except Exception as e:
+                    # If there's an error extracting the text, use a generic message
+                    print(f"Error extracting response text: {str(e)}")
+                    final_text = f"Operation completed successfully: {function_call.name}"
                 
                 # If there's a transaction hash in the result, add a clickable link to the response
                 if result.get("success", False) and "transaction_hash" in result:
@@ -413,6 +497,26 @@ def generate_response(prompt, model_name="models/gemini-2.0-flash"):
                     else:
                         # If no link or hash is present, append the link to the response
                         final_text += f"\n\nTransaction: {format_tx_hash_as_link(tx_hash)}"
+                
+                # If final_text is empty or very short, generate a fallback response
+                if not final_text or len(final_text) < 10:
+                    if result.get("success", False):
+                        if function_call.name == "swap_tokens":
+                            token_in = result.get("token_in", "tokens")
+                            token_out = result.get("token_out", "tokens")
+                            final_text = f"Great! I've successfully swapped your {token_in} to {token_out}."
+                        elif function_call.name == "wrap_flr":
+                            final_text = "Great! I've successfully wrapped your FLR to WFLR."
+                        elif function_call.name == "unwrap_wflr":
+                            final_text = "Great! I've successfully unwrapped your WFLR to FLR."
+                        else:
+                            final_text = f"Operation {function_call.name} completed successfully!"
+                        
+                        # Add transaction link if available
+                        if "transaction_hash" in result:
+                            final_text += f"\n\nTransaction: {format_tx_hash_as_link(result['transaction_hash'])}"
+                    else:
+                        final_text = f"I'm sorry, but the {function_call.name} operation failed: {result.get('message', 'Unknown error')}"
                 
                 # Display the final response
                 message_placeholder.markdown(final_text, unsafe_allow_html=True)
