@@ -210,7 +210,7 @@ wrap_flr_function = FunctionDeclaration(
         "properties": {
             "amount_flr": {
                 "type": "STRING",
-                "description": "Amount of FLR to wrap (e.g., '1.0' for 1 FLR)"
+                "description": "Amount of FLR to wrap as a string that can be converted to a float (e.g., '1.0' for 1 FLR)"
             }
         },
         "required": ["amount_flr"]

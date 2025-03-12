@@ -63,6 +63,58 @@ ERC20_ABI = [
     },
 ]
 
+# WFLR (Wrapped FLR) ABI - includes deposit function for wrapping
+WFLR_ABI = [
+    {
+        "constant": True,
+        "inputs": [{"name": "_owner", "type": "address"}],
+        "outputs": [{"name": "balance", "type": "uint256"}],
+        "type": "function",
+    },
+    {
+        "constant": True,
+        "inputs": [],
+        "name": "decimals",
+        "outputs": [{"name": "", "type": "uint8"}],
+        "type": "function",
+    },
+    {
+        "constant": True,
+        "inputs": [],
+        "name": "symbol",
+        "outputs": [{"name": "", "type": "string"}],
+        "type": "function",
+    },
+    {
+        "constant": True,
+        "inputs": [],
+        "name": "name",
+        "outputs": [{"name": "", "type": "string"}],
+        "type": "function",
+    },
+    {
+        "constant": False,
+        "inputs": [],
+        "name": "deposit",
+        "outputs": [],
+        "payable": True,
+        "stateMutability": "payable",
+        "type": "function"
+    },
+    {
+        "constant": False,
+        "inputs": [{"name": "wad", "type": "uint256"}],
+        "name": "withdraw",
+        "outputs": [],
+        "payable": False,
+        "stateMutability": "nonpayable",
+        "type": "function"
+    }
+]
+
+# WFLR contract address on Flare network
+WFLR_ADDRESS = "0x1D80c49BbBCd1C0911346656B529DF9E5c2F783d"
+
 # Custom stdout redirector for real-time display in Streamlit
 class StreamlitStdoutRedirector:
     def __init__(self, placeholder):
@@ -93,8 +145,8 @@ class StreamlitStdoutRedirector:
         # Create a styled display for the output
         content = self.buffer.getvalue()
         if content:
-            # Use markdown with code block for better formatting
-            self.placeholder.markdown(f"```\n{content}\n```")
+            # Use HTML pre tag instead of markdown code block for better formatting
+            self.placeholder.markdown(f"<pre>{content}</pre>", unsafe_allow_html=True)
     
     def flush(self):
         self.original_stdout.flush()
@@ -143,7 +195,7 @@ def handle_wrap_flr(args):
     try:
         log_message = f"🔧 FUNCTION CALL: wrap_flr\n"
         log_message += f"Parameters:\n"
-        log_message += f"  - amount_flr: {amount_flr}\n"
+        log_message += f"  - amount_flr: {amount_flr} (type: {type(amount_flr)})\n"
         log_message += f"\n🚀 Executing wrap operation: {amount_flr} FLR to WFLR\n"
         
         # Add this log message to the session state
@@ -159,7 +211,7 @@ def handle_wrap_flr(args):
             # Display initial message in the real-time output container
             initial_message = f"Starting wrap operation: {amount_flr} FLR → WFLR\n"
             initial_placeholder = st.session_state.realtime_output_container.empty()
-            initial_placeholder.markdown(f"```\n{initial_message}\n```")
+            initial_placeholder.markdown(f"<pre>{initial_message}</pre>", unsafe_allow_html=True)
             
             # Create a new placeholder for function output
             stdout_placeholder = st.session_state.realtime_output_container.empty()
@@ -170,17 +222,73 @@ def handle_wrap_flr(args):
             sys.stdout = stdout_redirector
             
             try:
-                # TODO: Replace with actual wrap implementation
-                # For now, we'll simulate the operation
-                print(f"Wrapping {amount_flr} FLR to WFLR...")
-                print("Preparing transaction...")
-                time.sleep(1)
-                print("Sending transaction to blockchain...")
-                time.sleep(1)
-                print("Transaction confirmed!")
+                # Import and use the wrap_flare function from wrap_flare.py
+                from wrap_flare import wrap_flare
                 
-                # Simulate a transaction hash
-                tx_hash = "0x" + "".join([hex(ord(c))[2:] for c in f"wrap_{amount_flr}_flr_{time.time()}"][:64])
+                # Check for private key in session state or environment variables
+                private_key = None
+                if st.session_state.get("private_key"):
+                    print("Using private key from session state")
+                    private_key = st.session_state.private_key
+                else:
+                    # Try to get from environment variables
+                    env_private_key = os.getenv("PRIVATE_KEY")
+                    if env_private_key:
+                        print("Using private key from environment variables")
+                        private_key = env_private_key
+                    else:
+                        raise Exception("Private key is not available. Please connect your wallet or set PRIVATE_KEY in .env file.")
+                
+                # Derive wallet address from private key
+                account = Account.from_key(private_key)
+                wallet_address = account.address
+                print(f"Derived wallet address from private key: {wallet_address}")
+                
+                # Set environment variables for wrap_flare
+                os.environ["FLARE_RPC_URL"] = st.session_state.get("rpc_url", os.getenv("FLARE_RPC_URL"))
+                os.environ["WALLET_ADDRESS"] = wallet_address
+                os.environ["PRIVATE_KEY"] = private_key
+                
+                # Validate amount_flr
+                try:
+                    # Convert amount_flr to float if it's a string
+                    if isinstance(amount_flr, str):
+                        amount_flr = float(amount_flr)
+                    
+                    # Ensure amount_flr is a number
+                    if not isinstance(amount_flr, (int, float)):
+                        raise Exception(f"Amount must be a number, got {type(amount_flr)}")
+                    
+                    print(f"Validated amount: {amount_flr} FLR")
+                except Exception as e:
+                    raise Exception(f"Invalid amount: {str(e)}")
+                
+                # Call the wrap_flare function
+                print(f"Calling wrap_flare with amount: {amount_flr}")
+                tx_receipt = wrap_flare(amount_flr)
+                
+                # Check if tx_receipt is None
+                if tx_receipt is None:
+                    raise Exception("Transaction failed or was rejected. Check the logs for details.")
+                
+                # Get transaction hash
+                try:
+                    if hasattr(tx_receipt.transactionHash, 'hex'):
+                        tx_hash_hex = tx_receipt.transactionHash.hex()
+                    else:
+                        # If it's already a string, use it directly
+                        tx_hash_hex = str(tx_receipt.transactionHash)
+                    
+                    # Clean up the hash if it has byte string markers
+                    if tx_hash_hex.startswith("b'") and tx_hash_hex.endswith("'"):
+                        tx_hash_hex = tx_hash_hex[2:-1]
+                    
+                    # Remove any backslashes or escape characters
+                    tx_hash_hex = tx_hash_hex.replace('\\x', '')
+                    
+                    print(f"Transaction hash: {tx_hash_hex}")
+                except Exception as e:
+                    raise Exception(f"Failed to get transaction hash: {str(e)}. Receipt: {tx_receipt}")
                 
                 # Capture the final stdout content
                 stdout_content = stdout_redirector.get_value()
@@ -188,6 +296,12 @@ def handle_wrap_flr(args):
                 # Add the stdout content to the logs
                 if stdout_content:
                     st.session_state.tool_logs.append(stdout_content)
+            except Exception as e:
+                # Restore original stdout
+                sys.stdout = original_stdout
+                
+                # Re-raise the exception to be caught by the outer try-except
+                raise Exception(f"Wrap operation failed: {str(e)}")
             finally:
                 # Restore original stdout
                 sys.stdout = original_stdout
@@ -195,21 +309,21 @@ def handle_wrap_flr(args):
             success_message = {
                 "success": True,
                 "message": f"Successfully wrapped {amount_flr} FLR to WFLR",
-                "transaction_hash": tx_hash,
-                "explorer_url": format_tx_hash_as_link(tx_hash)
+                "transaction_hash": tx_hash_hex,
+                "explorer_url": format_tx_hash_as_link(tx_hash_hex)
             }
             
             # Add the result to the logs
             result_log = f"✅ Wrap operation successful!\n"
-            result_log += f"Transaction hash: {format_tx_hash_as_link(tx_hash)}\n"
+            result_log += f"Transaction hash: {format_tx_hash_as_link(tx_hash_hex)}\n"
             st.session_state.tool_logs.append(result_log)
             
             # Display success message in the real-time output container
             success_placeholder = st.session_state.realtime_output_container.empty()
-            success_placeholder.markdown(f"""```
+            success_placeholder.markdown(f"""<pre>
 ✅ Wrap operation successful!
-```
-**Transaction Hash**: {format_tx_hash_as_link(tx_hash)}
+</pre>
+**Transaction Hash**: {format_tx_hash_as_link(tx_hash_hex)}
 """, unsafe_allow_html=True)
             
             # Update token balances after successful wrap
@@ -217,15 +331,79 @@ def handle_wrap_flr(args):
             
             return success_message
         else:
-            # Fallback if realtime_output_container is not available
-            # TODO: Replace with actual wrap implementation
-            tx_hash = "0x" + "".join([hex(ord(c))[2:] for c in f"wrap_{amount_flr}_flr_{time.time()}"][:64])
+            # Import and use the wrap_flare function from wrap_flare.py
+            from wrap_flare import wrap_flare
+            
+            # Check for private key in session state or environment variables
+            private_key = None
+            if st.session_state.get("private_key"):
+                print("Using private key from session state")
+                private_key = st.session_state.private_key
+            else:
+                # Try to get from environment variables
+                env_private_key = os.getenv("PRIVATE_KEY")
+                if env_private_key:
+                    print("Using private key from environment variables")
+                    private_key = env_private_key
+                else:
+                    raise Exception("Private key is not available. Please connect your wallet or set PRIVATE_KEY in .env file.")
+            
+            # Derive wallet address from private key
+            account = Account.from_key(private_key)
+            wallet_address = account.address
+            print(f"Derived wallet address from private key: {wallet_address}")
+            
+            # Set environment variables for wrap_flare
+            os.environ["FLARE_RPC_URL"] = st.session_state.get("rpc_url", os.getenv("FLARE_RPC_URL"))
+            os.environ["WALLET_ADDRESS"] = wallet_address
+            os.environ["PRIVATE_KEY"] = private_key
+            
+            # Validate amount_flr
+            try:
+                # Convert amount_flr to float if it's a string
+                if isinstance(amount_flr, str):
+                    amount_flr = float(amount_flr)
+                
+                # Ensure amount_flr is a number
+                if not isinstance(amount_flr, (int, float)):
+                    raise Exception(f"Amount must be a number, got {type(amount_flr)}")
+                
+                print(f"Validated amount: {amount_flr} FLR")
+            except Exception as e:
+                raise Exception(f"Invalid amount: {str(e)}")
+            
+            # Call the wrap_flare function
+            print(f"Calling wrap_flare with amount: {amount_flr}")
+            tx_receipt = wrap_flare(float(amount_flr))
+            
+            # Check if tx_receipt is None
+            if tx_receipt is None:
+                raise Exception("Transaction failed or was rejected. Check the logs for details.")
+            
+            # Get transaction hash
+            try:
+                if hasattr(tx_receipt.transactionHash, 'hex'):
+                    tx_hash_hex = tx_receipt.transactionHash.hex()
+                else:
+                    # If it's already a string, use it directly
+                    tx_hash_hex = str(tx_receipt.transactionHash)
+                
+                # Clean up the hash if it has byte string markers
+                if tx_hash_hex.startswith("b'") and tx_hash_hex.endswith("'"):
+                    tx_hash_hex = tx_hash_hex[2:-1]
+                
+                # Remove any backslashes or escape characters
+                tx_hash_hex = tx_hash_hex.replace('\\x', '')
+                
+                print(f"Transaction hash: {tx_hash_hex}")
+            except Exception as e:
+                raise Exception(f"Failed to get transaction hash: {str(e)}. Receipt: {tx_receipt}")
             
             success_message = {
                 "success": True,
                 "message": f"Successfully wrapped {amount_flr} FLR to WFLR",
-                "transaction_hash": tx_hash,
-                "explorer_url": format_tx_hash_as_link(tx_hash)
+                "transaction_hash": tx_hash_hex,
+                "explorer_url": format_tx_hash_as_link(tx_hash_hex)
             }
             
             # Update token balances after successful wrap
@@ -244,16 +422,18 @@ def handle_wrap_flr(args):
         
         # Add the error to the logs
         error_log = f"❌ Error executing wrap operation:\n{str(e)}\n"
-        error_log += traceback.format_exc()
+        if 'traceback' in sys.modules:
+            import traceback
+            error_log += traceback.format_exc()
         st.session_state.tool_logs.append(error_log)
         
         # Display error message in the real-time output container if available
         if "realtime_output_container" in st.session_state:
             error_placeholder = st.session_state.realtime_output_container.empty()
-            error_placeholder.markdown(f"""```
+            error_placeholder.markdown(f"""<pre>
 ❌ Error executing wrap operation:
 {str(e)}
-```""")
+</pre>""", unsafe_allow_html=True)
         
         return error_message
 
@@ -286,7 +466,7 @@ def handle_unwrap_wflr(args):
             # Display initial message in the real-time output container
             initial_message = f"Starting unwrap operation: {amount_wflr} WFLR → FLR\n"
             initial_placeholder = st.session_state.realtime_output_container.empty()
-            initial_placeholder.markdown(f"```\n{initial_message}\n```")
+            initial_placeholder.markdown(f"<pre>{initial_message}</pre>", unsafe_allow_html=True)
             
             # Create a new placeholder for function output
             stdout_placeholder = st.session_state.realtime_output_container.empty()
@@ -297,17 +477,72 @@ def handle_unwrap_wflr(args):
             sys.stdout = stdout_redirector
             
             try:
-                # TODO: Replace with actual unwrap implementation
-                # For now, we'll simulate the operation
-                print(f"Unwrapping {amount_wflr} WFLR to FLR...")
-                print("Preparing transaction...")
-                time.sleep(1)
-                print("Sending transaction to blockchain...")
-                time.sleep(1)
-                print("Transaction confirmed!")
+                # Import and use the unwrap_flare function from unwrap_flare.py
+                from unwrap_flare import unwrap_flare
                 
-                # Simulate a transaction hash
-                tx_hash = "0x" + "".join([hex(ord(c))[2:] for c in f"unwrap_{amount_wflr}_wflr_{time.time()}"][:64])
+                # Check for private key in session state or environment variables
+                private_key = None
+                if st.session_state.get("private_key"):
+                    print("Using private key from session state")
+                    private_key = st.session_state.private_key
+                else:
+                    # Try to get from environment variables
+                    env_private_key = os.getenv("PRIVATE_KEY")
+                    if env_private_key:
+                        print("Using private key from environment variables")
+                        private_key = env_private_key
+                    else:
+                        raise Exception("Private key is not available. Please connect your wallet or set PRIVATE_KEY in .env file.")
+                
+                # Derive wallet address from private key
+                account = Account.from_key(private_key)
+                wallet_address = account.address
+                print(f"Derived wallet address from private key: {wallet_address}")
+                
+                # Set environment variables for unwrap_flare
+                os.environ["FLARE_RPC_URL"] = st.session_state.get("rpc_url", os.getenv("FLARE_RPC_URL"))
+                os.environ["WALLET_ADDRESS"] = wallet_address
+                os.environ["PRIVATE_KEY"] = private_key
+                
+                # Validate amount_wflr
+                try:
+                    # Convert amount_wflr to float if it's a string
+                    if isinstance(amount_wflr, str):
+                        amount_wflr = float(amount_wflr)
+                    
+                    # Ensure amount_wflr is a number
+                    if not isinstance(amount_wflr, (int, float)):
+                        raise Exception(f"Amount must be a number, got {type(amount_wflr)}")
+                    
+                    print(f"Validated amount: {amount_wflr} WFLR")
+                except Exception as e:
+                    raise Exception(f"Invalid amount: {str(e)}")
+                
+                # Call the unwrap_flare function
+                print(f"Calling unwrap_flare with amount: {amount_wflr}")
+                tx_receipt = unwrap_flare(float(amount_wflr))
+                
+                if tx_receipt is None:
+                    raise Exception("Transaction failed or was rejected. Check the logs for details.")
+                
+                # Get transaction hash
+                try:
+                    if hasattr(tx_receipt.transactionHash, 'hex'):
+                        tx_hash_hex = tx_receipt.transactionHash.hex()
+                    else:
+                        # If it's already a string, use it directly
+                        tx_hash_hex = str(tx_receipt.transactionHash)
+                    
+                    # Clean up the hash if it has byte string markers
+                    if tx_hash_hex.startswith("b'") and tx_hash_hex.endswith("'"):
+                        tx_hash_hex = tx_hash_hex[2:-1]
+                    
+                    # Remove any backslashes or escape characters
+                    tx_hash_hex = tx_hash_hex.replace('\\x', '')
+                    
+                    print(f"Transaction hash: {tx_hash_hex}")
+                except Exception as e:
+                    raise Exception(f"Failed to get transaction hash: {str(e)}. Receipt: {tx_receipt}")
                 
                 # Capture the final stdout content
                 stdout_content = stdout_redirector.get_value()
@@ -315,6 +550,12 @@ def handle_unwrap_wflr(args):
                 # Add the stdout content to the logs
                 if stdout_content:
                     st.session_state.tool_logs.append(stdout_content)
+            except Exception as e:
+                # Restore original stdout
+                sys.stdout = original_stdout
+                
+                # Re-raise the exception to be caught by the outer try-except
+                raise Exception(f"Unwrap operation failed: {str(e)}")
             finally:
                 # Restore original stdout
                 sys.stdout = original_stdout
@@ -322,21 +563,21 @@ def handle_unwrap_wflr(args):
             success_message = {
                 "success": True,
                 "message": f"Successfully unwrapped {amount_wflr} WFLR to FLR",
-                "transaction_hash": tx_hash,
-                "explorer_url": format_tx_hash_as_link(tx_hash)
+                "transaction_hash": tx_hash_hex,
+                "explorer_url": format_tx_hash_as_link(tx_hash_hex)
             }
             
             # Add the result to the logs
             result_log = f"✅ Unwrap operation successful!\n"
-            result_log += f"Transaction hash: {format_tx_hash_as_link(tx_hash)}\n"
+            result_log += f"Transaction hash: {format_tx_hash_as_link(tx_hash_hex)}\n"
             st.session_state.tool_logs.append(result_log)
             
             # Display success message in the real-time output container
             success_placeholder = st.session_state.realtime_output_container.empty()
-            success_placeholder.markdown(f"""```
+            success_placeholder.markdown(f"""<pre>
 ✅ Unwrap operation successful!
-```
-**Transaction Hash**: {format_tx_hash_as_link(tx_hash)}
+</pre>
+**Transaction Hash**: {format_tx_hash_as_link(tx_hash_hex)}
 """, unsafe_allow_html=True)
             
             # Update token balances after successful unwrap
@@ -344,15 +585,78 @@ def handle_unwrap_wflr(args):
             
             return success_message
         else:
-            # Fallback if realtime_output_container is not available
-            # TODO: Replace with actual unwrap implementation
-            tx_hash = "0x" + "".join([hex(ord(c))[2:] for c in f"unwrap_{amount_wflr}_wflr_{time.time()}"][:64])
+            # Import and use the unwrap_flare function from unwrap_flare.py
+            from unwrap_flare import unwrap_flare
+            
+            # Check for private key in session state or environment variables
+            private_key = None
+            if st.session_state.get("private_key"):
+                print("Using private key from session state")
+                private_key = st.session_state.private_key
+            else:
+                # Try to get from environment variables
+                env_private_key = os.getenv("PRIVATE_KEY")
+                if env_private_key:
+                    print("Using private key from environment variables")
+                    private_key = env_private_key
+                else:
+                    raise Exception("Private key is not available. Please connect your wallet or set PRIVATE_KEY in .env file.")
+            
+            # Derive wallet address from private key
+            account = Account.from_key(private_key)
+            wallet_address = account.address
+            print(f"Derived wallet address from private key: {wallet_address}")
+            
+            # Set environment variables for unwrap_flare
+            os.environ["FLARE_RPC_URL"] = st.session_state.get("rpc_url", os.getenv("FLARE_RPC_URL"))
+            os.environ["WALLET_ADDRESS"] = wallet_address
+            os.environ["PRIVATE_KEY"] = private_key
+            
+            # Validate amount_wflr
+            try:
+                # Convert amount_wflr to float if it's a string
+                if isinstance(amount_wflr, str):
+                    amount_wflr = float(amount_wflr)
+                
+                # Ensure amount_wflr is a number
+                if not isinstance(amount_wflr, (int, float)):
+                    raise Exception(f"Amount must be a number, got {type(amount_wflr)}")
+                
+                print(f"Validated amount: {amount_wflr} WFLR")
+            except Exception as e:
+                raise Exception(f"Invalid amount: {str(e)}")
+            
+            # Call the unwrap_flare function
+            print(f"Calling unwrap_flare with amount: {amount_wflr}")
+            tx_receipt = unwrap_flare(float(amount_wflr))
+            
+            if tx_receipt is None:
+                raise Exception("Transaction failed or was rejected. Check the logs for details.")
+            
+            # Get transaction hash
+            try:
+                if hasattr(tx_receipt.transactionHash, 'hex'):
+                    tx_hash_hex = tx_receipt.transactionHash.hex()
+                else:
+                    # If it's already a string, use it directly
+                    tx_hash_hex = str(tx_receipt.transactionHash)
+                
+                # Clean up the hash if it has byte string markers
+                if tx_hash_hex.startswith("b'") and tx_hash_hex.endswith("'"):
+                    tx_hash_hex = tx_hash_hex[2:-1]
+                
+                # Remove any backslashes or escape characters
+                tx_hash_hex = tx_hash_hex.replace('\\x', '')
+                
+                print(f"Transaction hash: {tx_hash_hex}")
+            except Exception as e:
+                raise Exception(f"Failed to get transaction hash: {str(e)}. Receipt: {tx_receipt}")
             
             success_message = {
                 "success": True,
                 "message": f"Successfully unwrapped {amount_wflr} WFLR to FLR",
-                "transaction_hash": tx_hash,
-                "explorer_url": format_tx_hash_as_link(tx_hash)
+                "transaction_hash": tx_hash_hex,
+                "explorer_url": format_tx_hash_as_link(tx_hash_hex)
             }
             
             # Update token balances after successful unwrap
@@ -371,16 +675,20 @@ def handle_unwrap_wflr(args):
         
         # Add the error to the logs
         error_log = f"❌ Error executing unwrap operation:\n{str(e)}\n"
-        error_log += traceback.format_exc()
+        if 'traceback' in sys.modules:
+            import traceback
+            error_log += traceback.format_exc()
         st.session_state.tool_logs.append(error_log)
         
         # Display error message in the real-time output container if available
         if "realtime_output_container" in st.session_state:
             error_placeholder = st.session_state.realtime_output_container.empty()
-            error_placeholder.markdown(f"""```
+            error_placeholder.markdown(f"""<pre>
 ❌ Error executing unwrap operation:
 {str(e)}
-```""")
+</pre>""", unsafe_allow_html=True)
+        
+        return error_message
 
 def handle_lending_strategy(args):
     """Handle lending strategy recommendations"""
@@ -545,7 +853,7 @@ def handle_swap(args):
                 initial_message += f"Auto-selecting fee tier based on liquidity\n"
             
             initial_placeholder = st.session_state.realtime_output_container.empty()
-            initial_placeholder.markdown(f"```\n{initial_message}\n```")
+            initial_placeholder.markdown(f"<pre>{initial_message}</pre>", unsafe_allow_html=True)
             
             # Create a new placeholder for function output
             stdout_placeholder = st.session_state.realtime_output_container.empty()
@@ -596,9 +904,9 @@ def handle_swap(args):
             # Display success message in the real-time output container if available
             if "realtime_output_container" in st.session_state:
                 success_placeholder = st.session_state.realtime_output_container.empty()
-                success_placeholder.markdown(f"""```
+                success_placeholder.markdown(f"""<pre>
 ✅ Swap successful!
-```
+</pre>
 **Transaction Hash**: {format_tx_hash_as_link(tx_hash)}
 """, unsafe_allow_html=True)
             
@@ -618,9 +926,9 @@ def handle_swap(args):
             # Display failure message in the real-time output container if available
             if "realtime_output_container" in st.session_state:
                 failure_placeholder = st.session_state.realtime_output_container.empty()
-                failure_placeholder.markdown(f"""```
+                failure_placeholder.markdown(f"""<pre>
 ❌ Swap failed! No transaction hash returned.
-```""")
+</pre>""", unsafe_allow_html=True)
             
             return failure_message
     except Exception as e:
@@ -643,10 +951,10 @@ def handle_swap(args):
         # Display error message in the real-time output container if available
         if "realtime_output_container" in st.session_state:
             error_placeholder = st.session_state.realtime_output_container.empty()
-            error_placeholder.markdown(f"""```
+            error_placeholder.markdown(f"""<pre>
 ❌ Error executing swap:
 {str(e)}
-```""")
+</pre>""", unsafe_allow_html=True)
         
         return error_message
 

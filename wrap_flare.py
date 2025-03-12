@@ -7,11 +7,13 @@ Script to wrap native FLR to WFLR (Wrapped Flare) on Flare network
 from dotenv import load_dotenv
 import os
 import json
+import traceback
+from eth_account import Account
 
 load_dotenv()
 
 from web3 import Web3
-from web3.middleware import ExtraDataToPOAMiddleware
+from web3.middleware import geth_poa_middleware
 
 def wrap_flare(amount_flr):
     """
@@ -25,21 +27,65 @@ def wrap_flare(amount_flr):
     """
     # Get environment variables
     FLARE_RPC_URL = os.getenv("FLARE_RPC_URL")
-    WALLET_ADDRESS = os.getenv("WALLET_ADDRESS")
     PRIVATE_KEY = os.getenv("PRIVATE_KEY")
+    
+    # Derive wallet address from private key
+    if not PRIVATE_KEY:
+        print("ERROR: Private key is missing or empty!")
+        return None
+    
+    try:
+        account = Account.from_key(PRIVATE_KEY)
+        WALLET_ADDRESS = account.address
+        print(f"Using wallet address derived from private key: {WALLET_ADDRESS}")
+    except Exception as e:
+        print(f"ERROR: Failed to derive wallet address from private key: {e}")
+        print(traceback.format_exc())
+        return None
 
     print(f"Using RPC URL: {FLARE_RPC_URL}")
-    print(f"Using wallet address: {WALLET_ADDRESS}")
+    
+    # Debug: Check if private key is available
+    if not PRIVATE_KEY:
+        print("ERROR: Private key is missing or empty!")
+        return None
+    else:
+        print("Private key is available (not showing for security)")
+    
+    # Debug: Check if amount_flr is valid
+    print(f"Amount to wrap (raw input): {amount_flr}, type: {type(amount_flr)}")
+    
+    # Validate amount_flr
+    if amount_flr is None:
+        print("ERROR: amount_flr is None")
+        return None
+    
+    try:
+        # Convert amount_flr to float if it's a string
+        if isinstance(amount_flr, str):
+            amount_flr = float(amount_flr)
+        
+        # Ensure amount_flr is a number
+        if not isinstance(amount_flr, (int, float)):
+            print(f"ERROR: amount_flr must be a number, got {type(amount_flr)}")
+            return None
+        
+        print(f"Amount to wrap (converted): {amount_flr} FLR")
+    except Exception as e:
+        print(f"ERROR: Failed to convert amount_flr: {e}")
+        print(traceback.format_exc())
+        return None
 
     # Connect to the Flare network
     web3 = Web3(Web3.HTTPProvider(FLARE_RPC_URL))
 
     # Add middleware for POA networks
-    web3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+    web3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
     # Check if connected to the network
     if not web3.is_connected():
-        raise Exception("Failed to connect to the Flare network")
+        print("ERROR: Failed to connect to the Flare network")
+        return None
 
     print(f"Connected to Flare network: {web3.is_connected()}")
     print(f"Current block number: {web3.eth.block_number}")
@@ -47,6 +93,12 @@ def wrap_flare(amount_flr):
     # Check account balance
     account_balance = web3.eth.get_balance(WALLET_ADDRESS)
     print(f"Account balance: {web3.from_wei(account_balance, 'ether')} FLR")
+    
+    # Check if account has enough balance
+    amount_to_wrap = web3.to_wei(amount_flr, 'ether')
+    if account_balance < amount_to_wrap:
+        print(f"ERROR: Insufficient balance. Have {web3.from_wei(account_balance, 'ether')} FLR, need {amount_flr} FLR")
+        return None
 
     # WNat (WFLR) contract address on Flare
     wnat_contract_address = '0x1D80c49BbBCd1C0911346656B529DF9E5c2F783d'  # WFLR address
@@ -231,16 +283,33 @@ def wrap_flare(amount_flr):
         print(f"Transaction details: {json.dumps(dict(transaction), indent=2, default=str)}")
 
         # Sign transaction
-        signed_txn = web3.eth.account.sign_transaction(transaction, private_key=PRIVATE_KEY)
+        try:
+            signed_txn = web3.eth.account.sign_transaction(transaction, private_key=PRIVATE_KEY)
+            print("Transaction signed successfully")
+        except Exception as e:
+            print(f"ERROR: Failed to sign transaction: {e}")
+            print(traceback.format_exc())
+            return None
 
         # Send transaction
-        print(f"Sending transaction to wrap {amount_flr} FLR to WFLR...")
-        txn_hash = web3.eth.send_raw_transaction(signed_txn.raw_transaction)
-        print(f"Transaction sent with hash: {txn_hash.hex()}")
+        try:
+            print(f"Sending transaction to wrap {amount_flr} FLR to WFLR...")
+            txn_hash = web3.eth.send_raw_transaction(signed_txn.rawTransaction)
+            print(f"Transaction sent with hash: {txn_hash.hex()}")
+        except Exception as e:
+            print(f"ERROR: Failed to send transaction: {e}")
+            print(traceback.format_exc())
+            return None
 
         # Wait for transaction receipt
-        print("Waiting for transaction confirmation...")
-        txn_receipt = web3.eth.wait_for_transaction_receipt(txn_hash)
+        try:
+            print("Waiting for transaction confirmation...")
+            txn_receipt = web3.eth.wait_for_transaction_receipt(txn_hash)
+            print(f"Transaction receipt received")
+        except Exception as e:
+            print(f"ERROR: Failed to get transaction receipt: {e}")
+            print(traceback.format_exc())
+            return None
         
         print(f"Transaction receipt: {json.dumps(dict(txn_receipt), indent=2, default=str)}")
         
@@ -271,7 +340,8 @@ def wrap_flare(amount_flr):
             return None
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"ERROR: Unexpected exception: {e}")
+        print(traceback.format_exc())
         return None
 
 if __name__ == "__main__":

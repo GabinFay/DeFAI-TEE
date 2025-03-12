@@ -59,6 +59,10 @@ if "private_key" not in st.session_state:
     st.session_state.private_key = None
 if "wallet_connected" not in st.session_state:
     st.session_state.wallet_connected = False
+if "rpc_url" not in st.session_state:
+    st.session_state.rpc_url = os.getenv("FLARE_RPC_URL", "https://flare-api.flare.network/ext/C/rpc")
+if "wallet_address" not in st.session_state:
+    st.session_state.wallet_address = os.getenv("WALLET_ADDRESS", "")
 
 # Import the real swap function
 try:
@@ -438,6 +442,8 @@ def initialize_web3():
         # Derive wallet address from private key
         account = Account.from_key(private_key)
         wallet_address = account.address
+        # Update session state
+        st.session_state.wallet_address = wallet_address
     else:
         # Fall back to environment variables
         wallet_address = os.getenv("WALLET_ADDRESS")
@@ -447,9 +453,14 @@ def initialize_web3():
             # Derive wallet address from private key
             account = Account.from_key(private_key)
             wallet_address = account.address
+            # Update session state
+            st.session_state.wallet_address = wallet_address
     
     if not wallet_address:
         raise ValueError("No wallet address available. Please connect a wallet or set WALLET_ADDRESS in .env file")
+    
+    # Update session state with RPC URL
+    st.session_state.rpc_url = flare_rpc_url
     
     # Initialize Web3
     web3 = Web3(Web3.HTTPProvider(flare_rpc_url))
@@ -616,6 +627,9 @@ def display_balances_sidebar():
                         os.environ["PRIVATE_KEY"] = private_key_input
                         os.environ["WALLET_ADDRESS"] = wallet_address
                         
+                        # Set session state variables
+                        st.session_state.wallet_address = wallet_address
+                        
                         # Fetch initial balances
                         fetch_and_display_balances()
                         
@@ -653,20 +667,16 @@ def display_balances_sidebar():
     # Display available tools
     st.sidebar.markdown("## Available Tools")
     
-    # Swap tools
-    st.sidebar.markdown("### Token Swaps")
-    st.sidebar.markdown("- **swap_tokens**: Swap tokens on Uniswap V3")
-    
-    # Liquidity tools
-    st.sidebar.markdown("### Liquidity Management")
-    st.sidebar.markdown("- **add_liquidity**: Add liquidity to a Uniswap V3 pool")
-    st.sidebar.markdown("- **remove_liquidity**: Remove liquidity from a position")
-    st.sidebar.markdown("- **get_positions**: View your liquidity positions")
-    
-    # Information tools
-    st.sidebar.markdown("### Information")
-    st.sidebar.markdown("- **get_token_balances**: Check token balances")
-    st.sidebar.markdown("- **get_pool_info**: Get details about a liquidity pool")
+    # Simple list of all tools, one per line
+    st.sidebar.markdown("- Swap tokens")
+    st.sidebar.markdown("- Add liquidity")
+    st.sidebar.markdown("- Remove liquidity")
+    st.sidebar.markdown("- View positions")
+    st.sidebar.markdown("- Check balances")
+    st.sidebar.markdown("- Get pool info")
+    st.sidebar.markdown("- Wrap FLR to WFLR")
+    st.sidebar.markdown("- Unwrap WFLR to FLR")
+    st.sidebar.markdown("- Lending strategies")
 
 # Main app layout
 st.title("Flare Network AI Assistant")
