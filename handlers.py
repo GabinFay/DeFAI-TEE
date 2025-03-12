@@ -327,7 +327,7 @@ def handle_wrap_flr(args):
 """, unsafe_allow_html=True)
             
             # Update token balances after successful wrap
-            fetch_and_display_balances()
+            # fetch_and_display_balances()
             
             return success_message
         else:
@@ -407,7 +407,7 @@ def handle_wrap_flr(args):
             }
             
             # Update token balances after successful wrap
-            fetch_and_display_balances()
+            # fetch_and_display_balances()
             
             return success_message
     except Exception as e:
@@ -581,7 +581,7 @@ def handle_unwrap_wflr(args):
 """, unsafe_allow_html=True)
             
             # Update token balances after successful unwrap
-            fetch_and_display_balances()
+            # fetch_and_display_balances()
             
             return success_message
         else:
@@ -660,7 +660,7 @@ def handle_unwrap_wflr(args):
             }
             
             # Update token balances after successful unwrap
-            fetch_and_display_balances()
+            # fetch_and_display_balances()
             
             return success_message
     except Exception as e:
