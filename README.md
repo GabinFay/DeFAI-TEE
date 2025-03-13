@@ -2,6 +2,25 @@
 
 This repository contains scripts for interacting with Uniswap V3 on the Flare network using the uniswap-python SDK.
 
+## Project Structure
+
+The project is organized as follows:
+
+```
+flare-bot/
+├── tools/                  # All tool implementations
+│   ├── uniswap/            # Uniswap V3 tools
+│   ├── tokens/             # Token-related tools
+│   ├── lending/            # Lending protocol tools
+│   └── utils/              # Utility functions
+├── abis/                   # Contract ABIs
+├── handlers.py             # Function handlers for Gemini AI
+├── streamlit_gemini_swap.py # Streamlit UI
+└── other files...
+```
+
+See the [tools README](tools/README.md) for more details on the tools directory structure.
+
 ## Flare Network Addresses
 
 The following addresses are used for Uniswap V3 on Flare:
@@ -24,6 +43,28 @@ The following addresses are used for Uniswap V3 on Flare:
 - TickLens: 0xdB5F2Ca65aAeB277E36be69553E0e7aA3585204d
 - v2Pair_InitCodeHash: 0x60cc0e9ad39c5fa4ee52571f511012ed76fbaa9bbaffd2f3fafffcb3c47cff6e
 - v3Pool_InitCodeHash: 0x209015062f691a965df159762a8d966b688e328361c53ec32da2ad31287e3b72
+
+## Tools
+
+### Uniswap Tools
+
+- **swap_tokens**: Swap tokens on Uniswap V3
+- **add_liquidity**: Add liquidity to a Uniswap V3 pool
+- **remove_liquidity**: Remove liquidity from a Uniswap V3 position
+- **get_positions**: Get all Uniswap V3 positions for a wallet
+- **get_pool_info**: Get information about a Uniswap V3 pool
+
+### Token Tools
+
+- **wrap_flare**: Wrap native FLR to WFLR
+- **unwrap_flare**: Unwrap WFLR back to native FLR
+- **get_token_balances**: Get token balances for a wallet
+
+### Lending Tools
+
+- **borrow**: Borrow assets from lending protocols
+- **repay**: Repay borrowed assets
+- **supply**: Supply assets to lending protocols
 
 ## Scripts
 

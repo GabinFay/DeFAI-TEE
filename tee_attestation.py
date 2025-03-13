@@ -355,6 +355,28 @@ class VtpmValidation:
         except jwt.PyJWTError as e:
             raise VtpmValidationError(f"Token validation failed: {str(e)}")
 
+def is_running_in_tee(socket_path: str = "/run/container_launcher/teeserver.sock") -> bool:
+    """
+    Check if the application is running in a Trusted Execution Environment.
+    
+    This checks for the existence of the TEE server socket, which is only
+    present in a real TEE environment.
+    
+    Args:
+        socket_path: Path to the TEE server socket
+        
+    Returns:
+        bool: True if running in a TEE, False otherwise
+    """
+    # Check if we should simulate TEE environment
+    simulate_tee = os.environ.get("SIMULATE_TEE", "false").lower() == "true"
+    if simulate_tee:
+        return True
+    
+    # Check if the socket exists
+    socket_exists = os.path.exists(socket_path)
+    return socket_exists
+
 def generate_and_verify_attestation() -> Tuple[bool, str, Optional[str], Optional[Dict[str, Any]]]:
     """
     Generate an attestation token from the TEE and verify it.
@@ -463,34 +485,4 @@ def generate_and_verify_attestation() -> Tuple[bool, str, Optional[str], Optiona
         return False, f"Attestation verification error: {str(e)}", None, None
     except Exception as e:
         logger.error("unexpected_error", error=str(e), traceback=traceback.format_exc())
-        return False, f"Unexpected error during attestation: {str(e)}", None, None
-
-def is_running_in_tee(socket_path: str = "/run/container_launcher/teeserver.sock") -> bool:
-    """
-    Check if the application is running in a TEE environment.
-    
-    Args:
-        socket_path: Path to the TEE socket
-        
-    Returns:
-        bool: True if running in a TEE environment, False otherwise
-    """
-    # Check if the socket file exists
-    socket_exists = os.path.exists(socket_path)
-    
-    # Check if we're in simulation mode
-    simulate = os.environ.get("SIMULATE_ATTESTATION", "false").lower() == "true"
-    
-    # Log the result
-    logger.info(
-        "tee_environment_check", 
-        socket_exists=socket_exists, 
-        socket_path=socket_path,
-        simulation_mode=simulate
-    )
-    
-    # If we're in simulation mode, we don't need a real TEE
-    if simulate:
-        return True
-    
-    return socket_exists 
+        return False, f"Unexpected error during attestation: {str(e)}", None, None 

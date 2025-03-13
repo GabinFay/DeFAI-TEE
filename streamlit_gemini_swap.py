@@ -21,6 +21,8 @@ from eth_account import Account
 # Import the tools from the new module
 from tools import get_swap_tool, get_lending_tool, get_liquidity_tools, get_all_tools
 from tools import get_flare_tokens, get_kinetic_tokens
+# Import swap_tokens directly from tools
+from tools.uniswap.swap import swap_tokens
 
 # Import handlers from the new handlers.py file
 from handlers import (
@@ -63,12 +65,6 @@ if "rpc_url" not in st.session_state:
     st.session_state.rpc_url = os.getenv("FLARE_RPC_URL", "https://flare-api.flare.network/ext/C/rpc")
 if "wallet_address" not in st.session_state:
     st.session_state.wallet_address = os.getenv("WALLET_ADDRESS", "")
-
-# Import the real swap function
-try:
-    from flare_uniswap_sdk_swap import swap_tokens
-except ImportError:
-    raise ImportError("Could not import swap_tokens function. Make sure the flare_uniswap_sdk_swap module is in your Python path.")
 
 # Load environment variables from .env file
 load_dotenv()

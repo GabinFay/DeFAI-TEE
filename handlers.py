@@ -5,27 +5,36 @@ import traceback
 import json
 from io import StringIO
 from datetime import datetime
-from web3 import Web3
-from eth_account import Account
-from web3.middleware import geth_poa_middleware
-import threading  # Add this import
+import threading
 import os
 
-from flare_uniswap_positions import get_positions
-from flare_uniswap_pool_info import get_pool_info
+# Import from the new tools module structure
+from tools.constants import (
+    FLARE_TOKENS,
+    KINETIC_TOKENS,
+    ERC20_ABI,
+    WFLR_ABI,
+    WFLR_ADDRESS
+)
 
+# Import Uniswap functions
+from tools.uniswap.swap import swap_tokens
+from tools.uniswap.add_liquidity import add_liquidity
+from tools.uniswap.remove_liquidity import remove_liquidity
+from tools.uniswap.positions import get_positions
+from tools.uniswap.pool_info import get_pool_info
 
-# Import the real swap function
-try:
-    from flare_uniswap_sdk_swap import swap_tokens
-except ImportError:
-    raise ImportError("Could not import swap_tokens function. Make sure the flare_uniswap_sdk_swap module is in your Python path.")
+# Import token functions
+from tools.tokens.wrap import wrap_flare
+from tools.tokens.unwrap import unwrap_flare
+from tools.tokens.balance import display_token_balances as get_token_balances
 
-# Import token data
+# Import utility functions
+from tools.utils.formatting import format_tx_hash_as_link
+from tools.utils.web3_helpers import get_web3, get_account_from_private_key
+
+# Import helper functions
 from tools import get_flare_tokens, get_kinetic_tokens
-
-# Import the liquidity functions
-from flare_uniswap_liquidity import add_liquidity, remove_liquidity
 
 # Create a function that will be set from outside
 fetch_and_display_balances = lambda: None  # Default no-op function
@@ -34,93 +43,6 @@ def set_balance_updater(balance_updater_func):
     """Set the balance updater function from outside"""
     global fetch_and_display_balances
     fetch_and_display_balances = balance_updater_func
-
-# Get token addresses from the tools module
-FLARE_TOKENS = get_flare_tokens()
-KINETIC_TOKENS = get_kinetic_tokens()
-
-# ERC20 Token ABI (only the necessary parts)
-ERC20_ABI = [
-    {
-        "constant": True,
-        "inputs": [{"name": "_owner", "type": "address"}],
-        "outputs": [{"name": "balance", "type": "uint256"}],
-        "type": "function",
-    },
-    {
-        "constant": True,
-        "inputs": [],
-        "name": "decimals",
-        "outputs": [{"name": "", "type": "uint8"}],
-        "type": "function",
-    },
-    {
-        "constant": True,
-        "inputs": [],
-        "name": "symbol",
-        "outputs": [{"name": "", "type": "string"}],
-        "type": "function",
-    },
-    {
-        "constant": True,
-        "inputs": [],
-        "name": "name",
-        "outputs": [{"name": "", "type": "string"}],
-        "type": "function",
-    },
-]
-
-# WFLR (Wrapped FLR) ABI - includes deposit function for wrapping
-WFLR_ABI = [
-    {
-        "constant": True,
-        "inputs": [{"name": "_owner", "type": "address"}],
-        "outputs": [{"name": "balance", "type": "uint256"}],
-        "type": "function",
-    },
-    {
-        "constant": True,
-        "inputs": [],
-        "name": "decimals",
-        "outputs": [{"name": "", "type": "uint8"}],
-        "type": "function",
-    },
-    {
-        "constant": True,
-        "inputs": [],
-        "name": "symbol",
-        "outputs": [{"name": "", "type": "string"}],
-        "type": "function",
-    },
-    {
-        "constant": True,
-        "inputs": [],
-        "name": "name",
-        "outputs": [{"name": "", "type": "string"}],
-        "type": "function",
-    },
-    {
-        "constant": False,
-        "inputs": [],
-        "name": "deposit",
-        "outputs": [],
-        "payable": True,
-        "stateMutability": "payable",
-        "type": "function"
-    },
-    {
-        "constant": False,
-        "inputs": [{"name": "wad", "type": "uint256"}],
-        "name": "withdraw",
-        "outputs": [],
-        "payable": False,
-        "stateMutability": "nonpayable",
-        "type": "function"
-    }
-]
-
-# WFLR contract address on Flare network
-WFLR_ADDRESS = "0x1D80c49BbBCd1C0911346656B529DF9E5c2F783d"
 
 # Custom stdout redirector for real-time display in Streamlit
 class StreamlitStdoutRedirector:
@@ -229,9 +151,6 @@ def handle_wrap_flr(args):
             sys.stdout = stdout_redirector
             
             try:
-                # Import and use the wrap_flare function from wrap_flare.py
-                from wrap_flare import wrap_flare
-                
                 # Check for private key in session state or environment variables
                 private_key = None
                 if st.session_state.get("private_key"):
@@ -246,9 +165,8 @@ def handle_wrap_flr(args):
                     else:
                         raise Exception("Private key is not available. Please connect your wallet or set PRIVATE_KEY in .env file.")
                 
-                # Derive wallet address from private key
-                account = Account.from_key(private_key)
-                wallet_address = account.address
+                # Get account and wallet address
+                account, wallet_address = get_account_from_private_key(private_key)
                 print(f"Derived wallet address from private key: {wallet_address}")
                 
                 # Set environment variables for wrap_flare
@@ -270,7 +188,7 @@ def handle_wrap_flr(args):
                 except Exception as e:
                     raise Exception(f"Invalid amount: {str(e)}")
                 
-                # Call the wrap_flare function
+                # Call the wrap_flare function from our tools module
                 print(f"Calling wrap_flare with amount: {amount_flr}")
                 tx_receipt = wrap_flare(amount_flr)
                 
@@ -335,9 +253,6 @@ def handle_wrap_flr(args):
             
             return success_message
         else:
-            # Import and use the wrap_flare function from wrap_flare.py
-            from wrap_flare import wrap_flare
-            
             # Check for private key in session state or environment variables
             private_key = None
             if st.session_state.get("private_key"):
@@ -352,9 +267,8 @@ def handle_wrap_flr(args):
                 else:
                     raise Exception("Private key is not available. Please connect your wallet or set PRIVATE_KEY in .env file.")
             
-            # Derive wallet address from private key
-            account = Account.from_key(private_key)
-            wallet_address = account.address
+            # Get account and wallet address
+            account, wallet_address = get_account_from_private_key(private_key)
             print(f"Derived wallet address from private key: {wallet_address}")
             
             # Set environment variables for wrap_flare
@@ -376,7 +290,7 @@ def handle_wrap_flr(args):
             except Exception as e:
                 raise Exception(f"Invalid amount: {str(e)}")
             
-            # Call the wrap_flare function
+            # Call the wrap_flare function from our tools module
             print(f"Calling wrap_flare with amount: {amount_flr}")
             tx_receipt = wrap_flare(float(amount_flr))
             
@@ -478,9 +392,6 @@ def handle_unwrap_wflr(args):
             sys.stdout = stdout_redirector
             
             try:
-                # Import and use the unwrap_flare function from unwrap_flare.py
-                from unwrap_flare import unwrap_flare
-                
                 # Check for private key in session state or environment variables
                 private_key = None
                 if st.session_state.get("private_key"):
@@ -495,9 +406,8 @@ def handle_unwrap_wflr(args):
                     else:
                         raise Exception("Private key is not available. Please connect your wallet or set PRIVATE_KEY in .env file.")
                 
-                # Derive wallet address from private key
-                account = Account.from_key(private_key)
-                wallet_address = account.address
+                # Get account and wallet address
+                account, wallet_address = get_account_from_private_key(private_key)
                 print(f"Derived wallet address from private key: {wallet_address}")
                 
                 # Set environment variables for unwrap_flare
@@ -519,7 +429,7 @@ def handle_unwrap_wflr(args):
                 except Exception as e:
                     raise Exception(f"Invalid amount: {str(e)}")
                 
-                # Call the unwrap_flare function
+                # Call the unwrap_flare function from our tools module
                 print(f"Calling unwrap_flare with amount: {amount_wflr}")
                 tx_receipt = unwrap_flare(float(amount_wflr))
                 
@@ -583,9 +493,6 @@ def handle_unwrap_wflr(args):
             
             return success_message
         else:
-            # Import and use the unwrap_flare function from unwrap_flare.py
-            from unwrap_flare import unwrap_flare
-            
             # Check for private key in session state or environment variables
             private_key = None
             if st.session_state.get("private_key"):
@@ -600,9 +507,8 @@ def handle_unwrap_wflr(args):
                 else:
                     raise Exception("Private key is not available. Please connect your wallet or set PRIVATE_KEY in .env file.")
             
-            # Derive wallet address from private key
-            account = Account.from_key(private_key)
-            wallet_address = account.address
+            # Get account and wallet address
+            account, wallet_address = get_account_from_private_key(private_key)
             print(f"Derived wallet address from private key: {wallet_address}")
             
             # Set environment variables for unwrap_flare
@@ -624,7 +530,7 @@ def handle_unwrap_wflr(args):
             except Exception as e:
                 raise Exception(f"Invalid amount: {str(e)}")
             
-            # Call the unwrap_flare function
+            # Call the unwrap_flare function from our tools module
             print(f"Calling unwrap_flare with amount: {amount_wflr}")
             tx_receipt = unwrap_flare(float(amount_wflr))
             

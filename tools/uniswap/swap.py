@@ -11,6 +11,8 @@ from web3 import Web3
 from web3.middleware import geth_poa_middleware
 from uniswap import Uniswap
 from eth_account import Account
+# Use absolute import for external uniswap package
+import uniswap.fee
 from uniswap.fee import FeeTier
 
 def find_best_fee_tier(uniswap, token_in, token_out):
