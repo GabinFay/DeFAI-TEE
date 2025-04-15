@@ -1,4 +1,4 @@
-# Flare Bot
+# Polygon Bot
 
 A confidential bot designed to interact with blockchain environments and potentially other services, running within a secure enclave.
 
