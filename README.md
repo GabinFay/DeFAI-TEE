@@ -83,7 +83,7 @@ The bot uses environment variables for configuration, loaded from the `.env` fil
 *   `GEMINI_API_KEY`: Your API key for Google Gemini services.
 *   `ETHEREUM_RPC_URL`: RPC endpoint URL for the Ethereum network.
 *   `BASE_RPC_URL`: RPC endpoint URL for the Base network.
-*   `FLARE_RPC_URL`: RPC endpoint URL for the Flare network.
+*   `POLYGON_RPC_URL`: RPC endpoint URL for the Flare network.
 *   `WALLET_ADDRESS`: Your blockchain wallet address used by the bot.
 *   `PRIVATE_KEY`: The private key associated with the `WALLET_ADDRESS`. **Handle with extreme care.**
 *   `REACT_APP_RAINBOW_PROJECT_ID`: Project ID for RainbowKit (if used in a related frontend).
