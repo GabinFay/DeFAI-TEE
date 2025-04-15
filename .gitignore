@@ -72,3 +72,12 @@ yarn-error.log*
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Runtime / Generated files
+supervisord.log
+supervisord.pid
+*.log
+*.pid
+
+# Deprecated files
+deprecated/

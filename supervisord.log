@@ -1,6 +1,0 @@
-2025-03-09 17:24:49,336 INFO Set uid to user 0 succeeded
-2025-03-09 17:24:49,338 INFO supervisord started with pid 1
-2025-03-09 17:24:50,341 INFO spawned: 'nginx' with pid 7
-2025-03-09 17:24:50,343 INFO spawned: 'streamlit' with pid 8
-2025-03-09 17:24:51,651 INFO success: nginx entered RUNNING state, process has stayed up for > than 1 seconds (startsecs)
-2025-03-09 17:24:51,651 INFO success: streamlit entered RUNNING state, process has stayed up for > than 1 seconds (startsecs)
