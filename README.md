@@ -5,7 +5,7 @@ A confidential bot designed to interact with blockchain environments and potenti
 ## Features
 
 *   Secure execution within a Trusted Execution Environment (TEE).
-*   Interaction with Ethereum, Base, and Flare networks.
+*   Interaction with Ethereum, Base, and Polygon networks.
 *   Configurable via environment variables.
 *   Containerized deployment using Docker.
 
